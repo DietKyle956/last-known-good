@@ -20,6 +20,7 @@ type ToolResult struct {
 	ToolCallID string
 	Content    string
 	IsError    bool
+	Metadata   map[string]any
 }
 
 // Result is a single item from the LLM stream.
