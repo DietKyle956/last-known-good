@@ -24,7 +24,7 @@ type Tool struct {
 }
 
 type Registry struct {
-	tools  map[string]Tool
+	tools map[string]Tool
 	shell sandbox.Execer
 }
 

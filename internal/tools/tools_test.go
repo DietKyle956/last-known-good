@@ -192,12 +192,16 @@ func TestRegistryIsReadOnlyDelegatesToTool(t *testing.T) {
 	reg.Register(tools.Tool{
 		Name:       "ro_tool",
 		IsReadOnly: true,
-		Execute:    func(_ context.Context, _ sandbox.Execer, call core.ToolCall) core.ToolResult { return core.ToolResult{} },
+		Execute: func(_ context.Context, _ sandbox.Execer, call core.ToolCall) core.ToolResult {
+			return core.ToolResult{}
+		},
 	})
 	reg.Register(tools.Tool{
 		Name:       "rw_tool",
 		IsReadOnly: false,
-		Execute:    func(_ context.Context, _ sandbox.Execer, call core.ToolCall) core.ToolResult { return core.ToolResult{} },
+		Execute: func(_ context.Context, _ sandbox.Execer, call core.ToolCall) core.ToolResult {
+			return core.ToolResult{}
+		},
 	})
 
 	if !reg.IsReadOnly("ro_tool") {
@@ -574,7 +578,6 @@ func contains(ss []string, s string) bool {
 	}
 	return false
 }
-
 
 // ---------------------------------------------------------------------------
 // mockExecer for unit tests (no Docker)

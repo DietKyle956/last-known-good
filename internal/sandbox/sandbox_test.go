@@ -302,7 +302,6 @@ func TestCPUAndMemoryLimitsApplied(t *testing.T) {
 	}
 }
 
-
 func TestDockerExecerDelegates(t *testing.T) {
 	h := startDefault(t)
 	ex := NewDockerExecer(h)

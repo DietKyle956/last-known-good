@@ -4,7 +4,6 @@ import (
 	"context"
 )
 
-
 type dockerExecer struct {
 	h *SessionHandle
 }

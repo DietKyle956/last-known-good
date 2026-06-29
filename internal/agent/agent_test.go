@@ -497,7 +497,6 @@ func (s *spyExecutor) IsReadOnly(name string) bool {
 	return true
 }
 
-
 func TestAgentContextCancellation(t *testing.T) {
 	blockingLLM := &blockingLLM{block: make(chan struct{})}
 	exec := &spyExecutor{}

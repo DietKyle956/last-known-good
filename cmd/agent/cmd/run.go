@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	jsonFlag   bool
+	jsonFlag    bool
 	errNoPrompt = errors.New("prompt is required")
 )
 
