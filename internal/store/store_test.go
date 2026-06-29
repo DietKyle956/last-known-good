@@ -351,6 +351,38 @@ func TestMultipleSessionsIsolated(t *testing.T) {
 	}
 }
 
+func TestSessionExists(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New(%q) returned error: %v", dbPath, err)
+	}
+	defer s.Close()
+
+	id, err := s.CreateSession()
+	if err != nil {
+		t.Fatalf("CreateSession() returned error: %v", err)
+	}
+
+	exists, err := s.SessionExists(id)
+	if err != nil {
+		t.Fatalf("SessionExists(%d) returned error: %v", id, err)
+	}
+	if !exists {
+		t.Errorf("SessionExists(%d) = false, want true", id)
+	}
+
+	exists, err = s.SessionExists(99999)
+	if err != nil {
+		t.Fatalf("SessionExists(99999) returned error: %v", err)
+	}
+	if exists {
+		t.Errorf("SessionExists(99999) = true, want false")
+	}
+}
+
 func TestCreateSession(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")

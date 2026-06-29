@@ -3,6 +3,7 @@
 # LKG-003: DeepSeek API Client — Complete
 # LKG-004: Docker Sandbox Lifecycle — Complete
 # LKG-006: Built-in Sandbox Tool Set — Complete
+# LKG-007: SQLite Session Persistence — Complete
 
 ## Summary
 
@@ -70,6 +71,18 @@ Docker Compose dev environment, and GitHub Actions CI.
 - **All tools** execute entirely through the `sandbox.SessionHandle` — no direct host execution
 - **Test coverage**: 21 tests against real Docker containers — registry dispatch, schema validation, read/write/edit file round-trips, bash stdout/error, grep match/no-match, glob match/no-match, git diff with/without changes
 
+## What was built (LKG-007)
+
+- **`internal/store`** — SQLite-backed session persistence layer using `modernc.org/sqlite` (pure Go, no CGo, no external daemon)
+- **Schema migration**: `CREATE TABLE IF NOT EXISTS` applied on every `New()` call — tables: `sessions`, `messages`, `tool_calls`, `hook_events`
+- **`CreateSession()`** — creates a session record and returns its auto-increment ID
+- **`SaveMessage(sessionID, role, content, model)`** — saves a message with ordinal ordering
+- **`GetMessages(sessionID)`** — returns all messages for a session in insertion order
+- **`SaveToolCall(sessionID, name, args, result, isError, durationMs)`** — saves a tool call with full metadata
+- **`SaveHookEvent(sessionID, eventType, payload)`** — saves a hook lifecycle event
+- **Durability**: data survives close/reopen because it's written to a real SQLite file
+- **Test coverage**: 7 tests against real temporary SQLite files — schema application, CRUD, ordering, durability across restart, session isolation
+
 ## Package structure
 
 ```
@@ -80,6 +93,7 @@ internal/
   llm/              DeepSeek API client (complete)
   sandbox/          Docker sandbox lifecycle (complete)
   tools/            tool registry + 7 built-in sandbox tools (complete)
+  store/            SQLite session persistence (complete)
 ```
 
 ## TDD approach
@@ -135,6 +149,18 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 | 5 | Files outside mount are inaccessible from container |
 | 6 | Container removed on simulated interrupt |
 | 7 | No orphaned containers after session ends |
+
+### LKG-007 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Schema applies cleanly to new DB file |
+| 2 | CreateSession creates a record and returns its ID |
+| 3 | SaveMessage + GetMessages preserves ordering |
+| 4 | SaveToolCall stores all fields (name, args, result, error, duration) |
+| 5 | SaveHookEvent stores event type and payload |
+| 6 | Close & reopen — data persists in the SQLite file |
+| 7 | Multiple sessions are isolated (messages don't leak between sessions) |
 
 ### LKG-006 slices
 

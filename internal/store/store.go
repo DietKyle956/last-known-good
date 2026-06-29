@@ -128,6 +128,15 @@ func (s *Store) SaveToolCall(sessionID int64, name, arguments, result string, is
 	return nil
 }
 
+func (s *Store) SessionExists(id int64) (bool, error) {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM sessions WHERE id = ?", id).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("query session: %w", err)
+	}
+	return count > 0, nil
+}
+
 func (s *Store) CreateSession() (int64, error) {
 	res, err := s.db.Exec("INSERT INTO sessions DEFAULT VALUES")
 	if err != nil {
