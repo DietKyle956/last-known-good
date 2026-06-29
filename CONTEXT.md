@@ -6,6 +6,7 @@
 # LKG-007: SQLite Session Persistence — Complete
 # LKG-008: Session Resume — Complete
 # LKG-009: Full TUI Shell — Complete
+# LKG-010: Sandbox Network Policy & Resource Limits — Complete
 
 ## Summary
 
@@ -110,6 +111,15 @@ Docker Compose dev environment, and GitHub Actions CI.
 - **Import constraint**: `tui` is a domain package; does not import any infrastructure packages
 - **Test coverage**: 11 tests — model initialization, event handling, chunk accumulation, channel consumption, prompt submission, tool call lifecycle, and error display
 
+## What was built (LKG-010)
+
+- **`SandboxConfig`** struct with `Network` (allowlist) and `CPU`/`Memory` fields, passed to `Start(projectDir, cfg)`
+- **Default isolation**: nil or empty `Network` config applies `--network=none` to block all outbound traffic
+- **Domain allowlist**: resolves each domain to its IPv4 address, writes `/etc/hosts` entries, and overrides `/etc/resolv.conf` to `nameserver 127.0.0.1` to block DNS for non-listed domains
+- **CPU limits**: `--cpus` flag passed to `docker run` when `cfg.CPU` is set
+- **Memory limits**: `--memory` flag passed to `docker run` when `cfg.Memory` is set
+- **Test coverage**: 4 new tests against real Docker containers — default no-network, allowlist reachable, allowlist blocks others, CPU/memory limits verified via `docker inspect`
+
 ## Package structure
 
 ```
@@ -210,6 +220,15 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 | 4 | Tool call blocks (collapsed by default) |
 | 5 | Error tool calls (expanded, distinct styling) |
 | 6 | Wire into chat command |
+
+### LKG-010 slices
+
+| Slice | What |
+|-------|------|
+| 1 | `SandboxConfig` type + `Start` signature change, `--network=none` default |
+| 2 | Allowlist with per-domain `/etc/hosts` entries and DNS block via `/etc/resolv.conf` |
+| 3 | CPU and memory limits via `--cpus` and `--memory` |
+| 4 | Tests: default blocks outbound, allowlist reaches domain, allowlist blocks other, limits verified |
 
 ### LKG-006 slices
 
