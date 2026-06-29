@@ -1,17 +1,31 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"strings"
 
+	"github.com/DietKyle956/last-known-good/internal/agent"
 	"github.com/DietKyle956/last-known-good/internal/core"
 	"github.com/DietKyle956/last-known-good/internal/llm"
+	"github.com/DietKyle956/last-known-good/internal/tui"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
 var modelFlag string
+
+type stubExecutor struct{}
+
+func (s *stubExecutor) Execute(call core.ToolCall) core.ToolResult {
+	return core.ToolResult{
+		ToolCallID: call.ID,
+		IsError:    true,
+		Content:    "tool execution not available in chat mode",
+	}
+}
+
+func (s *stubExecutor) IsReadOnly(name string) bool {
+	return false
+}
 
 var chatCmd = &cobra.Command{
 	Use:   "chat",
@@ -33,43 +47,44 @@ var chatCmd = &cobra.Command{
 			{Role: "system", Content: "You are a helpful assistant."},
 		}
 
-		scanner := bufio.NewScanner(os.Stdin)
-		fmt.Print("> ")
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" {
-				fmt.Print("> ")
-				continue
-			}
-			if line == "/quit" || line == "/exit" {
-				break
-			}
-
-			messages = append(messages, core.Message{Role: "user", Content: line})
-
-			results, err := client.Chat(messages)
-			if err != nil {
-				return fmt.Errorf("chat error: %w", err)
-			}
-
-			var fullResponse strings.Builder
-			for r := range results {
-				if r.Err != nil {
-					return r.Err
-				}
-				if r.IsChunk {
-					fullResponse.WriteString(r.Content)
-					fmt.Print(r.Content)
-				}
-			}
-
-			fmt.Println()
-			messages = append(messages, core.Message{Role: "assistant", Content: fullResponse.String()})
-			fmt.Print("> ")
-		}
-
-		return nil
+		return runTUI(client, messages)
 	},
+}
+
+func runTUI(llmClient agent.LLM, messages []core.Message) error {
+	submit := make(chan string, 64)
+	events := make(chan agent.AgentEvent, 128)
+	exec := &stubExecutor{}
+
+	go coordinator(llmClient, exec, &messages, events, submit)
+
+	m := tui.New(events, submit)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	_, err := p.Run()
+	return err
+}
+
+func coordinator(llmClient agent.LLM, exec agent.ToolExecutor, messages *[]core.Message, events chan<- agent.AgentEvent, submit <-chan string) {
+	for {
+		a := agent.New(llmClient, exec)
+		go func() {
+			for ev := range a.Events() {
+				events <- ev
+			}
+		}()
+		a.Run(*messages)
+
+		prompt, ok := <-submit
+		if !ok {
+			close(events)
+			return
+		}
+		if prompt == "" {
+			close(events)
+			return
+		}
+		*messages = append(*messages, core.Message{Role: "user", Content: prompt})
+	}
 }
 
 func init() {

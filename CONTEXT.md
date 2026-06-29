@@ -4,6 +4,7 @@
 # LKG-004: Docker Sandbox Lifecycle — Complete
 # LKG-006: Built-in Sandbox Tool Set — Complete
 # LKG-007: SQLite Session Persistence — Complete
+# LKG-008: Session Resume — Complete
 
 ## Summary
 
@@ -83,6 +84,16 @@ Docker Compose dev environment, and GitHub Actions CI.
 - **Durability**: data survives close/reopen because it's written to a real SQLite file
 - **Test coverage**: 7 tests against real temporary SQLite files — schema application, CRUD, ordering, durability across restart, session isolation
 
+## What was built (LKG-008)
+
+- **`Store.SessionExists(id)`** — checks whether a session exists in the database, returns a clear boolean
+- **`internal/session`** package — bridges `store` and `core` for session lifecycle
+- **`Resume(store, sessionID)`** — loads a session's messages from SQLite as `[]core.Message`, returns an error if the session does not exist
+- **`SaveMessages(store, sessionID, messages)`** — persists new `core.Message` values to an existing session record
+- **State equivalence**: round-trip (save → resume → compare) preserves role, content, and ordering
+- **No domain → infra imports**: `session` is not in the domain list, so it can safely import `store` without violating the import constraint
+- **Test coverage**: 5 tests — resume loads messages, non-existent session error, save to session, round-trip equivalence, message type checks
+
 ## Package structure
 
 ```
@@ -94,6 +105,7 @@ internal/
   sandbox/          Docker sandbox lifecycle (complete)
   tools/            tool registry + 7 built-in sandbox tools (complete)
   store/            SQLite session persistence (complete)
+  session/          session resume & lifecycle management (complete)
 ```
 
 ## TDD approach
@@ -161,6 +173,15 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 | 5 | SaveHookEvent stores event type and payload |
 | 6 | Close & reopen — data persists in the SQLite file |
 | 7 | Multiple sessions are isolated (messages don't leak between sessions) |
+
+### LKG-008 slices
+
+| Slice | What |
+|-------|------|
+| 1 | `Store.SessionExists` — check if a session exists |
+| 2 | `session.Resume` — load messages from a session, error on missing |
+| 3 | `session.SaveMessages` — persist new messages to an existing session |
+| 4 | Full round-trip state equivalence — save, resume, verify identity |
 
 ### LKG-006 slices
 
