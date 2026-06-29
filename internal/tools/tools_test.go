@@ -16,7 +16,9 @@ func startSandbox(t *testing.T) *sandbox.SessionHandle {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	h, err := sandbox.Start(dir)
+	h, err := sandbox.Start(dir, sandbox.SandboxConfig{
+		Network: &sandbox.NetworkConfig{Allow: []string{"dl-cdn.alpinelinux.org"}},
+	})
 	if err != nil {
 		t.Fatalf("sandbox.Start failed: %v", err)
 	}
