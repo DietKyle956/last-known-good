@@ -314,7 +314,6 @@ func TestDeepSeekClientMalformedResponseReturnsError(t *testing.T) {
 	t.Fatal("expected an error from malformed response, got none")
 }
 
-
 func TestChatContextCancellation(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Wait for context cancellation
