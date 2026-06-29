@@ -33,10 +33,10 @@ func Start(projectDir string) (*SessionHandle, error) {
 }
 
 func Exec(h *SessionHandle, command string) (string, error) {
-	args := append([]string{"exec", h.id, "sh", "-c"}, command)
-	out, err := exec.Command("docker", args...).Output()
+	args := append([]string{"exec", "-w", "/workspace", h.id, "sh", "-c"}, command)
+	out, err := exec.Command("docker", args...).CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("docker exec: %w", err)
+		return string(out), fmt.Errorf("docker exec: %w", err)
 	}
 	return string(out), nil
 }

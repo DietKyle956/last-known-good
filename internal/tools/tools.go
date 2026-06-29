@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/DietKyle956/last-known-good/internal/agent"
 	"github.com/DietKyle956/last-known-good/internal/core"
@@ -11,7 +12,7 @@ import (
 
 var _ agent.ToolExecutor = (*Registry)(nil)
 
-type ToolFn func(sandbox.Sandbox, core.ToolCall) core.ToolResult
+type ToolFn func(*sandbox.SessionHandle, core.ToolCall) core.ToolResult
 
 type Tool struct {
 	Name        string
@@ -22,14 +23,14 @@ type Tool struct {
 }
 
 type Registry struct {
-	tools   map[string]Tool
-	sandbox sandbox.Sandbox
+	tools  map[string]Tool
+	handle *sandbox.SessionHandle
 }
 
-func New(sb sandbox.Sandbox) *Registry {
+func New(h *sandbox.SessionHandle) *Registry {
 	return &Registry{
-		tools:   make(map[string]Tool),
-		sandbox: sb,
+		tools:  make(map[string]Tool),
+		handle: h,
 	}
 }
 
@@ -76,7 +77,7 @@ func (r *Registry) Execute(call core.ToolCall) core.ToolResult {
 			Content:    err.Error(),
 		}
 	}
-	return tool.Execute(r.sandbox, call)
+	return tool.Execute(r.handle, call)
 }
 
 func validateArgs(schema map[string]any, raw string) error {
@@ -146,4 +147,229 @@ func validateProperty(schema map[string]any, name string, val any) error {
 		}
 	}
 	return nil
+}
+
+func RegisterAll(r *Registry) {
+	r.Register(readFileTool())
+	r.Register(writeFileTool())
+	r.Register(editFileTool())
+	r.Register(bashTool())
+	r.Register(grepTool())
+	r.Register(globTool())
+	r.Register(gitDiffTool())
+}
+
+func readFileTool() Tool {
+	return Tool{
+		Name:        "read_file",
+		Description: "Read a file from the workspace inside the sandbox",
+		IsReadOnly:  true,
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path": map[string]any{"type": "string"},
+			},
+			"required": []any{"path"},
+		},
+		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+			var args struct {
+				Path string `json:"path"`
+			}
+			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
+			}
+			out, err := sandbox.Exec(h, "cat "+quote(args.Path))
+			if err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
+			}
+			return core.ToolResult{ToolCallID: call.ID, Content: out}
+		},
+	}
+}
+
+func writeFileTool() Tool {
+	return Tool{
+		Name:        "write_file",
+		Description: "Write a file to the workspace inside the sandbox",
+		IsReadOnly:  false,
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path":    map[string]any{"type": "string"},
+				"content": map[string]any{"type": "string"},
+			},
+			"required": []any{"path", "content"},
+		},
+		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+			var args struct {
+				Path    string `json:"path"`
+				Content string `json:"content"`
+			}
+			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
+			}
+			cmd := "printf '%s' " + quote(args.Content) + " > " + quote(args.Path)
+			out, err := sandbox.Exec(h, cmd)
+			if err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
+			}
+			return core.ToolResult{ToolCallID: call.ID, Content: "written"}
+		},
+	}
+}
+
+func editFileTool() Tool {
+	return Tool{
+		Name:        "edit_file",
+		Description: "Edit a file in the workspace by finding and replacing text",
+		IsReadOnly:  false,
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path":       map[string]any{"type": "string"},
+				"old_string": map[string]any{"type": "string"},
+				"new_string": map[string]any{"type": "string"},
+			},
+			"required": []any{"path", "old_string", "new_string"},
+		},
+		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+			var args struct {
+				Path     string `json:"path"`
+				OldValue string `json:"old_string"`
+				NewValue string `json:"new_string"`
+			}
+			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
+			}
+			cmd := "sed -i 's/" + escapeSed(args.OldValue) + "/" + escapeSed(args.NewValue) + "/g' " + quote(args.Path)
+			out, err := sandbox.Exec(h, cmd)
+			if err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
+			}
+			return core.ToolResult{ToolCallID: call.ID, Content: "edited"}
+		},
+	}
+}
+
+func bashTool() Tool {
+	return Tool{
+		Name:        "bash",
+		Description: "Run a shell command inside the sandbox",
+		IsReadOnly:  false,
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"command": map[string]any{"type": "string"},
+			},
+			"required": []any{"command"},
+		},
+		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+			var args struct {
+				Command string `json:"command"`
+			}
+			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
+			}
+			out, err := sandbox.Exec(h, args.Command+" 2>&1")
+			if err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
+			}
+			return core.ToolResult{ToolCallID: call.ID, Content: out}
+		},
+	}
+}
+
+func grepTool() Tool {
+	return Tool{
+		Name:        "grep",
+		Description: "Search for a pattern in a file inside the sandbox",
+		IsReadOnly:  true,
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"pattern": map[string]any{"type": "string"},
+				"path":    map[string]any{"type": "string"},
+			},
+			"required": []any{"pattern", "path"},
+		},
+		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+			var args struct {
+				Pattern string `json:"pattern"`
+				Path    string `json:"path"`
+			}
+			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
+			}
+			cmd := "grep -rn " + quote(args.Pattern) + " " + quote(args.Path) + " 2>/dev/null || true"
+			out, err := sandbox.Exec(h, cmd)
+			if err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
+			}
+			out = strings.TrimSuffix(out, "\n")
+			return core.ToolResult{ToolCallID: call.ID, Content: out}
+		},
+	}
+}
+
+func globTool() Tool {
+	return Tool{
+		Name:        "glob",
+		Description: "List files matching a glob pattern inside the sandbox",
+		IsReadOnly:  true,
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"pattern": map[string]any{"type": "string"},
+				"path":    map[string]any{"type": "string"},
+			},
+			"required": []any{"pattern", "path"},
+		},
+		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+			var args struct {
+				Pattern string `json:"pattern"`
+				Path    string `json:"path"`
+			}
+			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
+			}
+			cmd := "find " + quote(args.Path) + " -type f -name " + quote(args.Pattern) + " 2>/dev/null || true"
+			out, err := sandbox.Exec(h, cmd)
+			if err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
+			}
+			out = strings.TrimSuffix(out, "\n")
+			return core.ToolResult{ToolCallID: call.ID, Content: out}
+		},
+	}
+}
+
+func gitDiffTool() Tool {
+	return Tool{
+		Name:        "git_diff",
+		Description: "Show unstaged changes in the git repository inside the sandbox",
+		IsReadOnly:  true,
+		Parameters: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+			out, err := sandbox.Exec(h, "cd /workspace && git diff 2>/dev/null || true")
+			if err != nil {
+				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
+			}
+			out = strings.TrimSuffix(out, "\n")
+			return core.ToolResult{ToolCallID: call.ID, Content: out}
+		},
+	}
+}
+
+func quote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+func escapeSed(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "/", "\\/")
+	s = strings.ReplaceAll(s, "&", "\\&")
+	return s
 }
