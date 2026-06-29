@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/DietKyle956/last-known-good/internal/agent"
+	"github.com/DietKyle956/last-known-good/internal/core"
 )
 
 func TestDeepSeekClientNonStreamingReturnsContent(t *testing.T) {
@@ -29,7 +29,7 @@ func TestDeepSeekClientNonStreamingReturnsContent(t *testing.T) {
 		BaseURL: srv.URL,
 	})
 
-	results, err := client.Chat([]agent.Message{{Role: "user", Content: "Hi"}})
+	results, err := client.Chat([]core.Message{{Role: "user", Content: "Hi"}})
 	if err != nil {
 		t.Fatalf("Chat returned error: %v", err)
 	}
@@ -68,12 +68,12 @@ func TestDeepSeekClientNonStreamingReturnsToolCalls(t *testing.T) {
 		BaseURL: srv.URL,
 	})
 
-	results, err := client.Chat([]agent.Message{{Role: "user", Content: "Read file"}})
+	results, err := client.Chat([]core.Message{{Role: "user", Content: "Read file"}})
 	if err != nil {
 		t.Fatalf("Chat returned error: %v", err)
 	}
 
-	var toolCalls []agent.ToolCall
+	var toolCalls []core.ToolCall
 	for r := range results {
 		if r.Err != nil {
 			t.Fatalf("result error: %v", r.Err)
@@ -110,7 +110,7 @@ func TestDeepSeekClientStreamingYieldsChunks(t *testing.T) {
 		Stream:  true,
 	})
 
-	results, err := client.Chat([]agent.Message{{Role: "user", Content: "Say hi"}})
+	results, err := client.Chat([]core.Message{{Role: "user", Content: "Say hi"}})
 	if err != nil {
 		t.Fatalf("Chat returned error: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestDeepSeekClientRequestIncludesThinkingMode(t *testing.T) {
 		ThinkingMode: true,
 	})
 
-	results, _ := client.Chat([]agent.Message{{Role: "user", Content: "Hi"}})
+	results, _ := client.Chat([]core.Message{{Role: "user", Content: "Hi"}})
 	for range results {
 	}
 
@@ -189,7 +189,7 @@ func TestDeepSeekClientRequestIncludesReasoningEffort(t *testing.T) {
 		ReasoningEffort: "high",
 	})
 
-	results, _ := client.Chat([]agent.Message{{Role: "user", Content: "Hi"}})
+	results, _ := client.Chat([]core.Message{{Role: "user", Content: "Hi"}})
 	for range results {
 	}
 
@@ -219,7 +219,7 @@ func TestDeepSeekClientRequestPayloadShape(t *testing.T) {
 		ThinkingMode: true,
 	})
 
-	results, _ := client.Chat([]agent.Message{
+	results, _ := client.Chat([]core.Message{
 		{Role: "system", Content: "You are a helpful assistant."},
 		{Role: "user", Content: "Hello!"},
 	})
@@ -271,7 +271,7 @@ func TestDeepSeekClientMalformedResponseReturnsError(t *testing.T) {
 		BaseURL: srv.URL,
 	})
 
-	results, err := client.Chat([]agent.Message{{Role: "user", Content: "Hi"}})
+	results, err := client.Chat([]core.Message{{Role: "user", Content: "Hi"}})
 	if err != nil {
 		return
 	}

@@ -13,7 +13,7 @@ Docker Compose dev environment, and GitHub Actions CI.
 - **Go module**: `github.com/DietKyle956/last-known-good` (Go 1.26)
 - **Entrypoint**: `cmd/agent/main.go` with Cobra root command
 - **Subcommands**: `agent chat` and `agent run` (stubs)
-- **Internal packages**: `agent`, `llm`, `sandbox`, `tools`, `hooks`, `skills`, `store`, `router`, `tui`
+- **Internal packages**: `core`, `agent`, `llm`, `sandbox`
 - **Docker Compose**: `Dockerfile` + `docker-compose.yml` for dev environment
 - **CI**: `.github/workflows/ci.yml` — build, test, lint on push/PR to main
 - **Import constraint**: `.github/check-imports.sh` prevents domain → infra imports
@@ -58,15 +58,10 @@ Docker Compose dev environment, and GitHub Actions CI.
 ```
 cmd/agent/          main.go + cmd/ (root, chat, run)
 internal/
+  core/             shared domain types (Message, ToolCall, ToolResult, Result)
   agent/            core agent loop + event types (complete)
   llm/              DeepSeek API client (complete)
   sandbox/          Docker sandbox lifecycle (complete)
-  tools/            tool interface & registry (stub)
-  hooks/            hooks framework (stub)
-  skills/           skills system (stub)
-  store/            persistence layer (stub)
-  router/           model router (stub)
-  tui/              terminal UI (stub)
 ```
 
 ## TDD approach

@@ -11,12 +11,6 @@ func TestAllInternalPackagesCompile(t *testing.T) {
 		"agent",
 		"llm",
 		"sandbox",
-		"tools",
-		"hooks",
-		"skills",
-		"store",
-		"router",
-		"tui",
 	}
 	root, _ := filepath.Abs("..")
 	for _, name := range pkgs {
