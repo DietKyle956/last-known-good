@@ -11,6 +11,7 @@ func TestAllInternalPackagesCompile(t *testing.T) {
 		"agent",
 		"llm",
 		"sandbox",
+		"singleshot",
 		"store",
 		"tui",
 	}
