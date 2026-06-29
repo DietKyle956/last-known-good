@@ -7,10 +7,10 @@ import (
 
 // Message represents a single message in the conversation.
 type Message struct {
-	Role        string
-	Content     string
-	ToolCalls   []ToolCall
-	ToolResult  *ToolResult
+	Role       string
+	Content    string
+	ToolCalls  []ToolCall
+	ToolResult *ToolResult
 }
 
 // ToolCall represents a tool call requested by the model.
@@ -198,4 +198,3 @@ func (a *Agent) executeToolCalls(messages []Message, calls []ToolCall) []Message
 
 	return messages
 }
-
