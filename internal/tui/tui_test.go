@@ -139,15 +139,18 @@ func TestSubmitChannelSendsPrompt(t *testing.T) {
 		t.Fatal("timed out waiting for prompt on submit channel")
 	}
 
-	// User message should be rendered in the viewport
-	if len(m.messages) != 2 {
-		t.Fatalf("expected 2 messages (label + content), got %d", len(m.messages))
+	// User message should be rendered in the viewport with thinking indicator
+	if len(m.messages) != 3 {
+		t.Fatalf("expected 3 messages (label + content + thinking), got %d", len(m.messages))
 	}
 	if m.messages[0].content != "You" {
 		t.Fatalf("expected label 'You', got %q", m.messages[0].content)
 	}
 	if m.messages[1].content != "hello" {
 		t.Fatalf("expected content 'hello', got %q", m.messages[1].content)
+	}
+	if m.messages[2].content != "…" {
+		t.Fatalf("expected thinking indicator '…', got %q", m.messages[2].content)
 	}
 }
 
@@ -246,6 +249,25 @@ func TestErrorEventAddsErrorMessage(t *testing.T) {
 	}
 	if !contains(m.messages[0].content, "something went wrong") {
 		t.Fatalf("expected error in message, got %q", m.messages[0].content)
+	}
+}
+
+func TestTextWrapsAtViewportWidth(t *testing.T) {
+	events := make(chan agent.AgentEvent, 10)
+	submit := make(chan string, 10)
+	m := New(events, submit)
+
+	// Set a narrow viewport to force wrapping
+	m.Update(tea.WindowSizeMsg{Width: 30, Height: 24})
+
+	m.handleEvent(agent.AgentEvent{
+		Type:    agent.EventModelResponseChunk,
+		Content: "This is a very long piece of text that should definitely be wrapped at the viewport width",
+	})
+
+	rendered := m.renderMessages()
+	if !contains(rendered, "\n") {
+		t.Fatalf("expected wrapped text (with newlines), got single line: %q", rendered)
 	}
 }
 
