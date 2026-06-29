@@ -3,29 +3,9 @@ package agent
 import (
 	"fmt"
 	"sync"
+
+	"github.com/DietKyle956/last-known-good/internal/core"
 )
-
-// Message represents a single message in the conversation.
-type Message struct {
-	Role       string
-	Content    string
-	ToolCalls  []ToolCall
-	ToolResult *ToolResult
-}
-
-// ToolCall represents a tool call requested by the model.
-type ToolCall struct {
-	ID        string
-	Name      string
-	Arguments string
-}
-
-// ToolResult represents the result of a tool execution.
-type ToolResult struct {
-	ToolCallID string
-	Content    string
-	IsError    bool
-}
 
 // AgentEventType categorises agent events.
 type AgentEventType int
@@ -42,8 +22,8 @@ const (
 type AgentEvent struct {
 	Type       AgentEventType
 	Content    string
-	ToolCall   *ToolCall
-	ToolResult *ToolResult
+	ToolCall   *core.ToolCall
+	ToolResult *core.ToolResult
 	Error      error
 }
 
@@ -64,23 +44,14 @@ func (t AgentEventType) String() string {
 	}
 }
 
-// Result is a single item from the LLM stream.
-type Result struct {
-	Content   string
-	ToolCalls []ToolCall
-	IsChunk   bool
-	Done      bool
-	Err       error
-}
-
 // LLM is the interface for calling a language model.
 type LLM interface {
-	Chat(messages []Message) (<-chan Result, error)
+	Chat(messages []core.Message) (<-chan core.Result, error)
 }
 
 // ToolExecutor executes tool calls and provides metadata.
 type ToolExecutor interface {
-	Execute(call ToolCall) ToolResult
+	Execute(call core.ToolCall) core.ToolResult
 	IsReadOnly(name string) bool
 }
 
@@ -106,19 +77,19 @@ func (a *Agent) Events() <-chan AgentEvent {
 }
 
 // Run starts the agent loop with the given messages.
-func (a *Agent) Run(messages []Message) {
+func (a *Agent) Run(messages []core.Message) {
 	defer close(a.events)
 	a.loop(messages)
 }
 
-func (a *Agent) loop(messages []Message) {
+func (a *Agent) loop(messages []core.Message) {
 	results, err := a.llm.Chat(messages)
 	if err != nil {
 		a.events <- AgentEvent{Type: EventError, Error: err}
 		return
 	}
 
-	var toolCalls []ToolCall
+	var toolCalls []core.ToolCall
 
 	for r := range results {
 		if r.Err != nil {
@@ -142,8 +113,8 @@ func (a *Agent) loop(messages []Message) {
 	a.events <- AgentEvent{Type: EventTurnComplete}
 }
 
-func (a *Agent) executeToolCalls(messages []Message, calls []ToolCall) []Message {
-	var ro, rw []ToolCall
+func (a *Agent) executeToolCalls(messages []core.Message, calls []core.ToolCall) []core.Message {
+	var ro, rw []core.ToolCall
 	for _, tc := range calls {
 		if a.exec.IsReadOnly(tc.Name) {
 			ro = append(ro, tc)
@@ -152,7 +123,7 @@ func (a *Agent) executeToolCalls(messages []Message, calls []ToolCall) []Message
 		}
 	}
 
-	results := make([]ToolResult, len(calls))
+	results := make([]core.ToolResult, len(calls))
 	resultIdx := make(map[string]int, len(calls))
 	for i, tc := range calls {
 		resultIdx[tc.ID] = i
@@ -190,7 +161,7 @@ func (a *Agent) executeToolCalls(messages []Message, calls []ToolCall) []Message
 	}
 
 	for _, r := range results {
-		messages = append(messages, Message{
+		messages = append(messages, core.Message{
 			Role:       "tool",
 			ToolResult: &r,
 		})

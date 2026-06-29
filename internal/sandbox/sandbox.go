@@ -6,6 +6,13 @@ import (
 	"strings"
 )
 
+// Sandbox is the interface for sandbox lifecycle management.
+type Sandbox interface {
+	Start(projectDir string) (*SessionHandle, error)
+	Exec(h *SessionHandle, command string) (string, error)
+	Stop(h *SessionHandle) error
+}
+
 type SessionHandle struct {
 	id string
 }

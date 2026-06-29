@@ -5,16 +5,18 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/DietKyle956/last-known-good/internal/core"
 )
 
 type noToolLLM struct {
 	response string
 }
 
-func (m *noToolLLM) Chat(messages []Message) (<-chan Result, error) {
-	ch := make(chan Result, 2)
-	ch <- Result{Content: m.response, IsChunk: true}
-	ch <- Result{Content: m.response, IsChunk: false, Done: true}
+func (m *noToolLLM) Chat(messages []core.Message) (<-chan core.Result, error) {
+	ch := make(chan core.Result, 2)
+	ch <- core.Result{Content: m.response, IsChunk: true}
+	ch <- core.Result{Content: m.response, IsChunk: false, Done: true}
 	close(ch)
 	return ch, nil
 }
@@ -34,24 +36,24 @@ func TestAgentEmitsTurnCompleteWhenModelReturnsContent(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]Message{{Role: "user", Content: "Hi"}})
+	agent.Run([]core.Message{{Role: "user", Content: "Hi"}})
 	<-done
 }
 
 type scriptedLLM struct {
 	mu       sync.Mutex
-	results  [][]Result
+	results  [][]core.Result
 	callIdx  int
-	messages [][]Message
+	messages [][]core.Message
 }
 
-func (s *scriptedLLM) Chat(messages []Message) (<-chan Result, error) {
+func (s *scriptedLLM) Chat(messages []core.Message) (<-chan core.Result, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.messages = append(s.messages, messages)
 	idx := s.callIdx
 	s.callIdx++
-	ch := make(chan Result, len(s.results[idx])+1)
+	ch := make(chan core.Result, len(s.results[idx])+1)
 	for _, r := range s.results[idx] {
 		ch <- r
 	}
@@ -61,9 +63,9 @@ func (s *scriptedLLM) Chat(messages []Message) (<-chan Result, error) {
 
 func TestAgentDispatchesToolCallsAndLoops(t *testing.T) {
 	llm := &scriptedLLM{
-		results: [][]Result{
+		results: [][]core.Result{
 			{
-				{ToolCalls: []ToolCall{{ID: "call1", Name: "read_file", Arguments: `{"path":"x.txt"}`}}, Done: true},
+				{ToolCalls: []core.ToolCall{{ID: "call1", Name: "read_file", Arguments: `{"path":"x.txt"}`}}, Done: true},
 			},
 			{
 				{Content: "Done", IsChunk: true},
@@ -86,7 +88,7 @@ func TestAgentDispatchesToolCallsAndLoops(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]Message{{Role: "user", Content: "List files"}})
+	agent.Run([]core.Message{{Role: "user", Content: "List files"}})
 	<-done
 
 	// Verify the executor was called with the tool
@@ -114,9 +116,9 @@ func TestAgentDispatchesToolCallsAndLoops(t *testing.T) {
 
 func TestAgentEmitsToolLifecycleEvents(t *testing.T) {
 	llm := &scriptedLLM{
-		results: [][]Result{
+		results: [][]core.Result{
 			{
-				{ToolCalls: []ToolCall{{ID: "call1", Name: "read_file", Arguments: `{"path":"x.txt"}`}}, Done: true},
+				{ToolCalls: []core.ToolCall{{ID: "call1", Name: "read_file", Arguments: `{"path":"x.txt"}`}}, Done: true},
 			},
 			{
 				{Content: "Done", Done: true},
@@ -138,7 +140,7 @@ func TestAgentEmitsToolLifecycleEvents(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]Message{{Role: "user", Content: "Read file"}})
+	agent.Run([]core.Message{{Role: "user", Content: "Read file"}})
 	<-done
 
 	var started, finished bool
@@ -160,7 +162,7 @@ func TestAgentEmitsToolLifecycleEvents(t *testing.T) {
 
 func TestAgentEmitsChunkEventsWithContent(t *testing.T) {
 	llm := &scriptedLLM{
-		results: [][]Result{
+		results: [][]core.Result{
 			{
 				{Content: "Hel", IsChunk: true},
 				{Content: "lo", IsChunk: true},
@@ -186,7 +188,7 @@ func TestAgentEmitsChunkEventsWithContent(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]Message{{Role: "user", Content: "Say hi"}})
+	agent.Run([]core.Message{{Role: "user", Content: "Say hi"}})
 	<-done
 
 	if len(chunks) != 3 {
@@ -211,7 +213,7 @@ func TestAgentEmitsErrorWhenLLMFails(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]Message{{Role: "user", Content: "Do something"}})
+	agent.Run([]core.Message{{Role: "user", Content: "Do something"}})
 	<-done
 
 	if len(events) != 1 {
@@ -227,7 +229,7 @@ func TestAgentEmitsErrorWhenLLMFails(t *testing.T) {
 
 func TestAgentEmitsErrorWhenResultStreamFails(t *testing.T) {
 	llm := &scriptedLLM{
-		results: [][]Result{
+		results: [][]core.Result{
 			{
 				{Content: "before", IsChunk: true},
 				{Err: errors.New("stream error")},
@@ -246,7 +248,7 @@ func TestAgentEmitsErrorWhenResultStreamFails(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]Message{{Role: "user", Content: "Do something"}})
+	agent.Run([]core.Message{{Role: "user", Content: "Do something"}})
 	<-done
 
 	var errEvent *AgentEvent
@@ -266,9 +268,9 @@ func TestAgentEmitsErrorWhenResultStreamFails(t *testing.T) {
 
 func TestAgentEventOrderForToolSequence(t *testing.T) {
 	llm := &scriptedLLM{
-		results: [][]Result{
+		results: [][]core.Result{
 			{
-				{ToolCalls: []ToolCall{
+				{ToolCalls: []core.ToolCall{
 					{ID: "call1", Name: "read_file", Arguments: `{"path":"a.txt"}`},
 					{ID: "call2", Name: "read_file", Arguments: `{"path":"b.txt"}`},
 				}, Done: true},
@@ -294,7 +296,7 @@ func TestAgentEventOrderForToolSequence(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]Message{{Role: "user", Content: "Read both"}})
+	agent.Run([]core.Message{{Role: "user", Content: "Read both"}})
 	<-done
 
 	// Filter to lifecycle events (skip chunks for ordering check)
@@ -323,9 +325,9 @@ func TestAgentEventOrderForToolSequence(t *testing.T) {
 
 func TestWriteToolsRunSequentially(t *testing.T) {
 	llm := &scriptedLLM{
-		results: [][]Result{
+		results: [][]core.Result{
 			{
-				{ToolCalls: []ToolCall{
+				{ToolCalls: []core.ToolCall{
 					{ID: "c1", Name: "write_tool", Arguments: `{}`},
 					{ID: "c2", Name: "write_tool", Arguments: `{}`},
 				}, Done: true},
@@ -346,7 +348,7 @@ func TestWriteToolsRunSequentially(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]Message{{Role: "user", Content: "write"}})
+	agent.Run([]core.Message{{Role: "user", Content: "write"}})
 	<-done
 
 	exec.mu.Lock()
@@ -367,7 +369,7 @@ type sequentialExecutor struct {
 	finished []int64
 }
 
-func (s *sequentialExecutor) Execute(call ToolCall) ToolResult {
+func (s *sequentialExecutor) Execute(call core.ToolCall) core.ToolResult {
 	start := time.Now().UnixNano()
 	time.Sleep(time.Millisecond)
 	finish := time.Now().UnixNano()
@@ -377,7 +379,7 @@ func (s *sequentialExecutor) Execute(call ToolCall) ToolResult {
 	s.finished = append(s.finished, finish)
 	s.mu.Unlock()
 
-	return ToolResult{ToolCallID: call.ID, Content: "ok"}
+	return core.ToolResult{ToolCallID: call.ID, Content: "ok"}
 }
 
 func (s *sequentialExecutor) IsReadOnly(name string) bool {
@@ -386,9 +388,9 @@ func (s *sequentialExecutor) IsReadOnly(name string) bool {
 
 func TestReadOnlyToolsRunConcurrently(t *testing.T) {
 	llm := &scriptedLLM{
-		results: [][]Result{
+		results: [][]core.Result{
 			{
-				{ToolCalls: []ToolCall{
+				{ToolCalls: []core.ToolCall{
 					{ID: "c1", Name: "read_only_tool", Arguments: `{}`},
 					{ID: "c2", Name: "read_only_tool", Arguments: `{}`},
 				}, Done: true},
@@ -409,7 +411,7 @@ func TestReadOnlyToolsRunConcurrently(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]Message{{Role: "user", Content: "go"}})
+	agent.Run([]core.Message{{Role: "user", Content: "go"}})
 	<-done
 
 	exec.mu.Lock()
@@ -434,7 +436,7 @@ type orderingExecutor struct {
 	callIdx  int
 }
 
-func (o *orderingExecutor) Execute(call ToolCall) ToolResult {
+func (o *orderingExecutor) Execute(call core.ToolCall) core.ToolResult {
 	o.mu.Lock()
 	idx := o.callIdx
 	o.callIdx++
@@ -453,7 +455,7 @@ func (o *orderingExecutor) Execute(call ToolCall) ToolResult {
 	o.finished = append(o.finished, time.Now().UnixNano())
 	o.mu.Unlock()
 
-	return ToolResult{ToolCallID: call.ID, Content: "ok"}
+	return core.ToolResult{ToolCallID: call.ID, Content: "ok"}
 }
 
 func (o *orderingExecutor) IsReadOnly(name string) bool {
@@ -464,20 +466,20 @@ type errLLM struct {
 	err string
 }
 
-func (e *errLLM) Chat(messages []Message) (<-chan Result, error) {
+func (e *errLLM) Chat(messages []core.Message) (<-chan core.Result, error) {
 	return nil, errors.New(e.err)
 }
 
 type recordingExecutor struct {
 	mu    sync.Mutex
-	calls []ToolCall
+	calls []core.ToolCall
 }
 
-func (r *recordingExecutor) Execute(call ToolCall) ToolResult {
+func (r *recordingExecutor) Execute(call core.ToolCall) core.ToolResult {
 	r.mu.Lock()
 	r.calls = append(r.calls, call)
 	r.mu.Unlock()
-	return ToolResult{ToolCallID: call.ID, Content: "file contents"}
+	return core.ToolResult{ToolCallID: call.ID, Content: "file contents"}
 }
 
 func (r *recordingExecutor) IsReadOnly(name string) bool {
@@ -486,8 +488,8 @@ func (r *recordingExecutor) IsReadOnly(name string) bool {
 
 type spyExecutor struct{}
 
-func (s *spyExecutor) Execute(call ToolCall) ToolResult {
-	return ToolResult{}
+func (s *spyExecutor) Execute(call core.ToolCall) core.ToolResult {
+	return core.ToolResult{}
 }
 
 func (s *spyExecutor) IsReadOnly(name string) bool {

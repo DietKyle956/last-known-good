@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/DietKyle956/last-known-good/internal/agent"
+	"github.com/DietKyle956/last-known-good/internal/core"
 )
 
 // DeepSeekConfig configures a DeepSeek client.
@@ -21,7 +21,7 @@ type DeepSeekConfig struct {
 	ReasoningEffort string
 }
 
-// DeepSeekClient implements agent.LLM for DeepSeek's API.
+// DeepSeekClient implements core.LLM for DeepSeek's API.
 type DeepSeekClient struct {
 	config DeepSeekConfig
 	http   *http.Client
@@ -39,7 +39,7 @@ func NewDeepSeekClient(config DeepSeekConfig) *DeepSeekClient {
 }
 
 // Chat sends a chat completion request to DeepSeek and returns a result channel.
-func (c *DeepSeekClient) Chat(messages []agent.Message) (<-chan agent.Result, error) {
+func (c *DeepSeekClient) Chat(messages []core.Message) (<-chan core.Result, error) {
 	req, err := c.buildRequest(messages)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func (c *DeepSeekClient) Chat(messages []agent.Message) (<-chan agent.Result, er
 		return nil, fmt.Errorf("deepseek request failed: %w", err)
 	}
 
-	results := make(chan agent.Result, 64)
+	results := make(chan core.Result, 64)
 
 	if c.config.Stream {
 		go c.readStream(resp, results)
@@ -61,7 +61,7 @@ func (c *DeepSeekClient) Chat(messages []agent.Message) (<-chan agent.Result, er
 	return results, nil
 }
 
-func (c *DeepSeekClient) buildRequest(messages []agent.Message) (*http.Request, error) {
+func (c *DeepSeekClient) buildRequest(messages []core.Message) (*http.Request, error) {
 	dsReq := DeepSeekRequest{
 		Model:           c.config.Model,
 		Messages:        make([]DeepSeekMessage, 0, len(messages)),
@@ -77,6 +77,12 @@ func (c *DeepSeekClient) buildRequest(messages []agent.Message) (*http.Request, 
 		dsm := DeepSeekMessage{
 			Role:    m.Role,
 			Content: m.Content,
+		}
+		if m.ToolResult != nil {
+			dsm.ToolCallID = m.ToolResult.ToolCallID
+			if dsm.Content == "" {
+				dsm.Content = m.ToolResult.Content
+			}
 		}
 		dsReq.Messages = append(dsReq.Messages, dsm)
 	}
@@ -97,31 +103,31 @@ func (c *DeepSeekClient) buildRequest(messages []agent.Message) (*http.Request, 
 	return req, nil
 }
 
-func (c *DeepSeekClient) readResponse(resp *http.Response, results chan<- agent.Result) {
+func (c *DeepSeekClient) readResponse(resp *http.Response, results chan<- core.Result) {
 	defer resp.Body.Close()
 	defer close(results)
 
 	var dsResp DeepSeekResponse
 	if err := json.NewDecoder(resp.Body).Decode(&dsResp); err != nil {
-		results <- agent.Result{Err: fmt.Errorf("decode response: %w", err)}
+		results <- core.Result{Err: fmt.Errorf("decode response: %w", err)}
 		return
 	}
 
 	if len(dsResp.Choices) == 0 {
-		results <- agent.Result{Done: true}
+		results <- core.Result{Done: true}
 		return
 	}
 
 	choice := dsResp.Choices[0]
 	if choice.Message.Content != "" {
-		results <- agent.Result{Content: choice.Message.Content, IsChunk: true}
+		results <- core.Result{Content: choice.Message.Content, IsChunk: true}
 	}
 
 	toolCalls := convertToolCalls(choice.Message.ToolCalls)
-	results <- agent.Result{Done: true, ToolCalls: toolCalls}
+	results <- core.Result{Done: true, ToolCalls: toolCalls}
 }
 
-func (c *DeepSeekClient) readStream(resp *http.Response, results chan<- agent.Result) {
+func (c *DeepSeekClient) readStream(resp *http.Response, results chan<- core.Result) {
 	defer resp.Body.Close()
 	defer close(results)
 
@@ -134,13 +140,13 @@ func (c *DeepSeekClient) readStream(resp *http.Response, results chan<- agent.Re
 
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
-			results <- agent.Result{Done: true}
+			results <- core.Result{Done: true}
 			return
 		}
 
 		var chunk DeepSeekChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			results <- agent.Result{Err: fmt.Errorf("decode chunk: %w", err)}
+			results <- core.Result{Err: fmt.Errorf("decode chunk: %w", err)}
 			return
 		}
 
@@ -150,22 +156,22 @@ func (c *DeepSeekClient) readStream(resp *http.Response, results chan<- agent.Re
 
 		delta := chunk.Choices[0].Delta
 		if delta.Content != "" {
-			results <- agent.Result{Content: delta.Content, IsChunk: true}
+			results <- core.Result{Content: delta.Content, IsChunk: true}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		results <- agent.Result{Err: fmt.Errorf("stream read error: %w", err)}
+		results <- core.Result{Err: fmt.Errorf("stream read error: %w", err)}
 	}
 }
 
-func convertToolCalls(tcs []DeepSeekToolCall) []agent.ToolCall {
+func convertToolCalls(tcs []DeepSeekToolCall) []core.ToolCall {
 	if len(tcs) == 0 {
 		return nil
 	}
-	calls := make([]agent.ToolCall, 0, len(tcs))
+	calls := make([]core.ToolCall, 0, len(tcs))
 	for _, tc := range tcs {
-		calls = append(calls, agent.ToolCall{
+		calls = append(calls, core.ToolCall{
 			ID:        tc.ID,
 			Name:      tc.Function.Name,
 			Arguments: tc.Function.Arguments,

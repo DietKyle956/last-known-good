@@ -16,9 +16,10 @@ type ThinkingConfig struct {
 
 // DeepSeekMessage is a single message in the conversation.
 type DeepSeekMessage struct {
-	Role       string `json:"role"`
-	Content    string `json:"content"`
-	ToolCallID string `json:"tool_call_id,omitempty"`
+	Role       string             `json:"role"`
+	Content    string             `json:"content"`
+	ToolCallID string             `json:"tool_call_id,omitempty"`
+	ToolCalls  []DeepSeekToolCall `json:"tool_calls,omitempty"`
 }
 
 // DeepSeekResponse is the response from a non-streaming chat completion.
