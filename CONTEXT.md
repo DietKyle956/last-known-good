@@ -2,6 +2,7 @@
 # LKG-002: AgentEvent Types & Core Agent Loop — Complete
 # LKG-003: DeepSeek API Client — Complete
 # LKG-004: Docker Sandbox Lifecycle — Complete
+# LKG-006: Built-in Sandbox Tool Set — Complete
 
 ## Summary
 
@@ -53,6 +54,22 @@ Docker Compose dev environment, and GitHub Actions CI.
 - **Isolation**: files outside the mounted project directory are not accessible from inside the container
 - **Test coverage**: 7 tests against real Docker daemon — container creation/removal, command reuse, bidirectional file visibility, filesystem isolation, interrupt cleanup, orphan prevention
 
+## What was built (LKG-006)
+
+- **`ToolFn`** signature changed to `func(*sandbox.SessionHandle, core.ToolCall) core.ToolResult` — tools receive a sandbox handle for all execution
+- **`Registry`** stores a `*sandbox.SessionHandle` instead of `sandbox.Sandbox`, removes the need for mock sandboxes in tool tests
+- **`RegisterAll(reg)`** — registers all seven built-in tools at once
+- **`read_file`** — reads a file at the given path inside the sandbox via `cat`, returns contents or error
+- **`write_file`** — writes content to a file inside the sandbox via `printf`, overwrites if exists
+- **`edit_file`** — find-and-replace text in a file using `sed -i`, leaves rest of file intact
+- **`bash`** — runs a shell command inside the sandbox with stderr merged into stdout on failure
+- **`grep`** — searches for a pattern in a file using `grep -rn`, returns matching lines
+- **`glob`** — lists files matching a glob pattern using `find -type f -name`
+- **`git_diff`** — shows unstaged changes at `/workspace` via `git diff`
+- **`sandbox.Exec`** — changed to `CombinedOutput()` for stderr capture; adds `-w /workspace` for consistent working directory
+- **All tools** execute entirely through the `sandbox.SessionHandle` — no direct host execution
+- **Test coverage**: 21 tests against real Docker containers — registry dispatch, schema validation, read/write/edit file round-trips, bash stdout/error, grep match/no-match, glob match/no-match, git diff with/without changes
+
 ## Package structure
 
 ```
@@ -62,6 +79,7 @@ internal/
   agent/            core agent loop + event types (complete)
   llm/              DeepSeek API client (complete)
   sandbox/          Docker sandbox lifecycle (complete)
+  tools/            tool registry + 7 built-in sandbox tools (complete)
 ```
 
 ## TDD approach
@@ -117,3 +135,18 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 | 5 | Files outside mount are inaccessible from container |
 | 6 | Container removed on simulated interrupt |
 | 7 | No orphaned containers after session ends |
+
+### LKG-006 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Interface change: `ToolFn` takes `*SessionHandle`, Registry stores handle |
+| 2 | `read_file` tool — file exists returns content, missing returns error |
+| 3 | `write_file` tool — creates file, overwrites existing |
+| 4 | `edit_file` tool — find-and-replace leaves rest intact |
+| 5 | `bash` tool — stdout on success, stderr on non-zero exit |
+| 6 | `grep` tool — matches return lines, no matches returns empty |
+| 7 | `glob` tool — matches return paths, no matches returns empty |
+| 8 | `git_diff` tool — changes return diff, clean returns empty |
+| 9 | All seven tools registered and schemas validated |
+| 10 | `Exec` uses `CombinedOutput` + `-w /workspace` |
