@@ -130,6 +130,7 @@ internal/
   llm/              DeepSeek API client (complete)
   sandbox/          Docker sandbox lifecycle (complete)
   tools/            tool registry + 7 built-in sandbox tools (complete)
+  singleshot/       single-shot CLI renderer (text + JSON) (complete)
   store/            SQLite session persistence (complete)
   session/          session resume & lifecycle management (complete)
   tui/              Bubble Tea terminal UI (complete)
