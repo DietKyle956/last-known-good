@@ -48,7 +48,11 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("starting sandbox: %w", err)
 		}
-		defer sandbox.Stop(handle)
+		defer func() {
+			if err := sandbox.Stop(handle); err != nil {
+				fmt.Fprintf(os.Stderr, "error stopping sandbox: %v\n", err)
+			}
+		}()
 
 		shell := sandbox.NewDockerExecer(handle)
 		reg := tools.New(shell)
