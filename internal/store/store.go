@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/DietKyle956/last-known-good/internal/core"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -82,6 +84,40 @@ func (s *Store) GetMessages(sessionID int64) ([]MessageRecord, error) {
 		msgs = append(msgs, m)
 	}
 	return msgs, rows.Err()
+}
+
+func (s *Store) SaveMessages(sessionID int64, messages []core.Message) error {
+	for i, m := range messages {
+		if err := s.SaveMessage(sessionID, m.Role, m.Content, ""); err != nil {
+			return fmt.Errorf("save message %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) Resume(sessionID int64) ([]core.Message, error) {
+	exists, err := s.SessionExists(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("check session: %w", err)
+	}
+	if !exists {
+		return nil, fmt.Errorf("session %d not found", sessionID)
+	}
+
+	records, err := s.GetMessages(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("get messages: %w", err)
+	}
+
+	messages := make([]core.Message, len(records))
+	for i, r := range records {
+		messages[i] = core.Message{
+			Role:    r.Role,
+			Content: r.Content,
+		}
+	}
+
+	return messages, nil
 }
 
 func (s *Store) SaveHookEvent(sessionID int64, eventType, payload string) error {

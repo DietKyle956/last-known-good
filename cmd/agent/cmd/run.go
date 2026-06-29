@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -49,7 +50,8 @@ var runCmd = &cobra.Command{
 		}
 		defer sandbox.Stop(handle)
 
-		reg := tools.New(handle)
+		shell := sandbox.NewDockerExecer(handle)
+		reg := tools.New(shell)
 		tools.RegisterAll(reg)
 
 		events := make(chan agent.AgentEvent, 128)
@@ -61,8 +63,9 @@ var runCmd = &cobra.Command{
 			close(events)
 		}()
 
+		ctx := context.Background()
 		go func() {
-			a.Run([]core.Message{
+			a.Run(ctx, []core.Message{
 				{Role: "system", Content: "You are a helpful assistant."},
 				{Role: "user", Content: prompt},
 			})

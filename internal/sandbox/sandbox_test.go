@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
@@ -38,7 +39,7 @@ func startDefault(t *testing.T) *SessionHandle {
 func TestExecRunsCommandAndReusesContainer(t *testing.T) {
 	h := startDefault(t)
 
-	out1, err := Exec(h, "echo hello-1")
+	out1, err := Exec(context.Background(), h, "echo hello-1")
 	if err != nil {
 		t.Fatalf("first Exec failed: %v", err)
 	}
@@ -46,7 +47,7 @@ func TestExecRunsCommandAndReusesContainer(t *testing.T) {
 		t.Fatalf("expected 'hello-1', got %q", out1)
 	}
 
-	out2, err := Exec(h, "echo hello-2")
+	out2, err := Exec(context.Background(), h, "echo hello-2")
 	if err != nil {
 		t.Fatalf("second Exec failed: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestFileWrittenOnHostVisibleInsideContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := Exec(h, "cat /workspace/test.txt")
+	out, err := Exec(context.Background(), h, "cat /workspace/test.txt")
 	if err != nil {
 		t.Fatalf("Exec failed: %v", err)
 	}
@@ -95,7 +96,7 @@ func TestFileWrittenInsideContainerVisibleOnHost(t *testing.T) {
 	}
 	defer func() { _ = Stop(h) }()
 
-	_, err = Exec(h, "echo 'hello from container' > /workspace/from-container.txt")
+	_, err = Exec(context.Background(), h, "echo 'hello from container' > /workspace/from-container.txt")
 	if err != nil {
 		t.Fatalf("Exec failed: %v", err)
 	}
@@ -131,7 +132,7 @@ func TestFilesOutsideMountNotAccessibleFromContainer(t *testing.T) {
 	}
 	defer func() { _ = Stop(h) }()
 
-	out, err := Exec(h, "cat "+outsideFile)
+	out, err := Exec(context.Background(), h, "cat "+outsideFile)
 	if err == nil {
 		t.Fatalf("expected error accessing file outside mount, got output: %q", out)
 	}
@@ -214,7 +215,7 @@ func TestStartCreatesContainerAndStopRemovesIt(t *testing.T) {
 func TestDefaultNoNetworkBlocksOutbound(t *testing.T) {
 	h := startDefault(t)
 
-	_, err := Exec(h, "wget -q -O- --timeout=5 http://example.com")
+	_, err := Exec(context.Background(), h, "wget -q -O- --timeout=5 http://example.com")
 	if err == nil {
 		t.Fatal("expected outbound network to be blocked by default")
 	}
@@ -235,7 +236,7 @@ func TestAllowlistReachesAllowedDomain(t *testing.T) {
 	}
 	defer func() { _ = Stop(h) }()
 
-	out, err := Exec(h, "wget -q -O- --timeout=10 http://example.com")
+	out, err := Exec(context.Background(), h, "wget -q -O- --timeout=10 http://example.com")
 	if err != nil {
 		t.Fatalf("expected allowed domain to be reachable: %v", err)
 	}
@@ -259,7 +260,7 @@ func TestAllowlistBlocksOtherDomains(t *testing.T) {
 	}
 	defer func() { _ = Stop(h) }()
 
-	_, err = Exec(h, "wget -q -O- --timeout=5 http://google.com")
+	_, err = Exec(context.Background(), h, "wget -q -O- --timeout=5 http://google.com")
 	if err == nil {
 		t.Fatal("expected non-allowed domain to be unreachable")
 	}
@@ -298,5 +299,18 @@ func TestCPUAndMemoryLimitsApplied(t *testing.T) {
 	}
 	if strings.TrimSpace(string(memOut)) != "134217728" {
 		t.Fatalf("expected Memory 134217728, got %q", strings.TrimSpace(string(memOut)))
+	}
+}
+
+
+func TestDockerExecerDelegates(t *testing.T) {
+	h := startDefault(t)
+	ex := NewDockerExecer(h)
+	out, err := ex.Exec(context.Background(), "echo hello")
+	if err != nil {
+		t.Fatalf("Exec failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "hello" {
+		t.Fatalf("expected 'hello', got %q", out)
 	}
 }

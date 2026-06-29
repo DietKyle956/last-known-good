@@ -1,6 +1,8 @@
 package tools_test
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -27,7 +29,7 @@ func startSandbox(t *testing.T) *sandbox.SessionHandle {
 			t.Errorf("failed to stop sandbox: %v", err)
 		}
 	})
-	_, err = sandbox.Exec(h, "apk add --no-cache git >/dev/null 2>&1")
+	_, err = sandbox.Exec(context.Background(), h, "apk add --no-cache git >/dev/null 2>&1")
 	if err != nil {
 		t.Fatalf("failed to install git: %v", err)
 	}
@@ -36,12 +38,12 @@ func startSandbox(t *testing.T) *sandbox.SessionHandle {
 
 func TestRegistryDispatchesToRegisteredTool(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	reg.Register(tools.Tool{
 		Name:        "echo",
 		Description: "Echoes the input",
 		Parameters:  map[string]any{},
-		Execute: func(_ *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+		Execute: func(_ context.Context, _ sandbox.Execer, call core.ToolCall) core.ToolResult {
 			return core.ToolResult{
 				ToolCallID: call.ID,
 				Content:    call.Arguments,
@@ -49,7 +51,7 @@ func TestRegistryDispatchesToRegisteredTool(t *testing.T) {
 		},
 	})
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "call_1",
 		Name:      "echo",
 		Arguments: `"hello"`,
@@ -68,7 +70,7 @@ func TestRegistryDispatchesToRegisteredTool(t *testing.T) {
 
 func TestRegistryToolDefinitions(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	reg.Register(tools.Tool{
 		Name:        "read_file",
 		Description: "Read a file from the workspace",
@@ -78,7 +80,7 @@ func TestRegistryToolDefinitions(t *testing.T) {
 				"path": map[string]any{"type": "string"},
 			},
 		},
-		Execute: func(_ *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+		Execute: func(_ context.Context, _ sandbox.Execer, call core.ToolCall) core.ToolResult {
 			return core.ToolResult{}
 		},
 	})
@@ -92,7 +94,7 @@ func TestRegistryToolDefinitions(t *testing.T) {
 				"content": map[string]any{"type": "string"},
 			},
 		},
-		Execute: func(_ *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+		Execute: func(_ context.Context, _ sandbox.Execer, call core.ToolCall) core.ToolResult {
 			return core.ToolResult{}
 		},
 	})
@@ -120,7 +122,7 @@ func TestRegistryToolDefinitions(t *testing.T) {
 func TestRegistrySchemaValidationRejectsInvalidArgs(t *testing.T) {
 	h := startSandbox(t)
 	executed := false
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	reg.Register(tools.Tool{
 		Name:        "read_file",
 		Description: "Read a file",
@@ -131,7 +133,7 @@ func TestRegistrySchemaValidationRejectsInvalidArgs(t *testing.T) {
 			},
 			"required": []any{"path"},
 		},
-		Execute: func(_ *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+		Execute: func(_ context.Context, _ sandbox.Execer, call core.ToolCall) core.ToolResult {
 			executed = true
 			return core.ToolResult{
 				ToolCallID: call.ID,
@@ -140,7 +142,7 @@ func TestRegistrySchemaValidationRejectsInvalidArgs(t *testing.T) {
 		},
 	})
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "call_1",
 		Name:      "read_file",
 		Arguments: `{}`,
@@ -155,7 +157,7 @@ func TestRegistrySchemaValidationRejectsInvalidArgs(t *testing.T) {
 
 func TestRegistrySchemaValidationAcceptsValidArgs(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	reg.Register(tools.Tool{
 		Name:        "read_file",
 		Description: "Read a file",
@@ -166,7 +168,7 @@ func TestRegistrySchemaValidationAcceptsValidArgs(t *testing.T) {
 			},
 			"required": []any{"path"},
 		},
-		Execute: func(_ *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+		Execute: func(_ context.Context, _ sandbox.Execer, call core.ToolCall) core.ToolResult {
 			return core.ToolResult{
 				ToolCallID: call.ID,
 				Content:    call.Arguments,
@@ -174,7 +176,7 @@ func TestRegistrySchemaValidationAcceptsValidArgs(t *testing.T) {
 		},
 	})
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "call_1",
 		Name:      "read_file",
 		Arguments: `{"path": "/foo"}`,
@@ -186,16 +188,16 @@ func TestRegistrySchemaValidationAcceptsValidArgs(t *testing.T) {
 
 func TestRegistryIsReadOnlyDelegatesToTool(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	reg.Register(tools.Tool{
 		Name:       "ro_tool",
 		IsReadOnly: true,
-		Execute:    func(_ *sandbox.SessionHandle, call core.ToolCall) core.ToolResult { return core.ToolResult{} },
+		Execute:    func(_ context.Context, _ sandbox.Execer, call core.ToolCall) core.ToolResult { return core.ToolResult{} },
 	})
 	reg.Register(tools.Tool{
 		Name:       "rw_tool",
 		IsReadOnly: false,
-		Execute:    func(_ *sandbox.SessionHandle, call core.ToolCall) core.ToolResult { return core.ToolResult{} },
+		Execute:    func(_ context.Context, _ sandbox.Execer, call core.ToolCall) core.ToolResult { return core.ToolResult{} },
 	})
 
 	if !reg.IsReadOnly("ro_tool") {
@@ -208,8 +210,8 @@ func TestRegistryIsReadOnlyDelegatesToTool(t *testing.T) {
 
 func TestRegistryUnknownToolReturnsError(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
-	result := reg.Execute(core.ToolCall{
+	reg := tools.New(sandbox.NewDockerExecer(h))
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "call_1",
 		Name:      "nonexistent",
 		Arguments: "{}",
@@ -224,15 +226,15 @@ func TestRegistryUnknownToolReturnsError(t *testing.T) {
 
 func TestReadFileReturnsContents(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	_, err := sandbox.Exec(h, "echo -n 'hello world' > /workspace/test.txt")
+	_, err := sandbox.Exec(context.Background(), h, "echo -n 'hello world' > /workspace/test.txt")
 	if err != nil {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "read_file",
 		Arguments: `{"path": "/workspace/test.txt"}`,
@@ -247,10 +249,10 @@ func TestReadFileReturnsContents(t *testing.T) {
 
 func TestReadFileMissingReturnsError(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "read_file",
 		Arguments: `{"path": "/workspace/nonexistent.txt"}`,
@@ -265,10 +267,10 @@ func TestReadFileMissingReturnsError(t *testing.T) {
 
 func TestWriteFileCreatesFile(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "write_file",
 		Arguments: `{"path": "/workspace/new.txt", "content": "hello from tool"}`,
@@ -277,7 +279,7 @@ func TestWriteFileCreatesFile(t *testing.T) {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
 
-	out, err := sandbox.Exec(h, "cat /workspace/new.txt")
+	out, err := sandbox.Exec(context.Background(), h, "cat /workspace/new.txt")
 	if err != nil {
 		t.Fatalf("failed to read file: %v", err)
 	}
@@ -288,15 +290,15 @@ func TestWriteFileCreatesFile(t *testing.T) {
 
 func TestWriteFileOverwritesExisting(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	_, err := sandbox.Exec(h, "echo -n 'old content' > /workspace/overwrite.txt")
+	_, err := sandbox.Exec(context.Background(), h, "echo -n 'old content' > /workspace/overwrite.txt")
 	if err != nil {
 		t.Fatalf("failed to create file: %v", err)
 	}
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "write_file",
 		Arguments: `{"path": "/workspace/overwrite.txt", "content": "new content"}`,
@@ -305,7 +307,7 @@ func TestWriteFileOverwritesExisting(t *testing.T) {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
 
-	out, err := sandbox.Exec(h, "cat /workspace/overwrite.txt")
+	out, err := sandbox.Exec(context.Background(), h, "cat /workspace/overwrite.txt")
 	if err != nil {
 		t.Fatalf("failed to read file: %v", err)
 	}
@@ -316,15 +318,15 @@ func TestWriteFileOverwritesExisting(t *testing.T) {
 
 func TestEditFileReplacesText(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	_, err := sandbox.Exec(h, "printf 'line 1\nold line\nline 3' > /workspace/edit.txt")
+	_, err := sandbox.Exec(context.Background(), h, "printf 'line 1\nold line\nline 3' > /workspace/edit.txt")
 	if err != nil {
 		t.Fatalf("failed to create file: %v", err)
 	}
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "edit_file",
 		Arguments: `{"path": "/workspace/edit.txt", "old_string": "old line", "new_string": "new line"}`,
@@ -333,7 +335,7 @@ func TestEditFileReplacesText(t *testing.T) {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
 
-	out, err := sandbox.Exec(h, "cat /workspace/edit.txt")
+	out, err := sandbox.Exec(context.Background(), h, "cat /workspace/edit.txt")
 	if err != nil {
 		t.Fatalf("failed to read file: %v", err)
 	}
@@ -344,10 +346,10 @@ func TestEditFileReplacesText(t *testing.T) {
 
 func TestBashReturnsStdout(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "bash",
 		Arguments: `{"command": "echo hello-world"}`,
@@ -362,10 +364,10 @@ func TestBashReturnsStdout(t *testing.T) {
 
 func TestBashNonZeroExitReturnsError(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "bash",
 		Arguments: `{"command": "echo err-output >&2; exit 1"}`,
@@ -380,15 +382,15 @@ func TestBashNonZeroExitReturnsError(t *testing.T) {
 
 func TestGrepReturnsMatchingLines(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	_, err := sandbox.Exec(h, "printf 'foo bar\nbaz qux\nfoo baz' > /workspace/grep.txt")
+	_, err := sandbox.Exec(context.Background(), h, "printf 'foo bar\nbaz qux\nfoo baz' > /workspace/grep.txt")
 	if err != nil {
 		t.Fatalf("failed to create file: %v", err)
 	}
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "grep",
 		Arguments: `{"pattern": "foo", "path": "/workspace/grep.txt"}`,
@@ -403,15 +405,15 @@ func TestGrepReturnsMatchingLines(t *testing.T) {
 
 func TestGrepNoMatchesReturnsEmpty(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	_, err := sandbox.Exec(h, "printf 'abc\ndef' > /workspace/nomatch.txt")
+	_, err := sandbox.Exec(context.Background(), h, "printf 'abc\ndef' > /workspace/nomatch.txt")
 	if err != nil {
 		t.Fatalf("failed to create file: %v", err)
 	}
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "grep",
 		Arguments: `{"pattern": "zzz", "path": "/workspace/nomatch.txt"}`,
@@ -426,15 +428,15 @@ func TestGrepNoMatchesReturnsEmpty(t *testing.T) {
 
 func TestGlobReturnsMatchingPaths(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	_, err := sandbox.Exec(h, "touch /workspace/a.txt /workspace/b.txt /workspace/c.go")
+	_, err := sandbox.Exec(context.Background(), h, "touch /workspace/a.txt /workspace/b.txt /workspace/c.go")
 	if err != nil {
 		t.Fatalf("failed to create files: %v", err)
 	}
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "glob",
 		Arguments: `{"pattern": "*.txt", "path": "/workspace"}`,
@@ -449,10 +451,10 @@ func TestGlobReturnsMatchingPaths(t *testing.T) {
 
 func TestGlobNoMatchesReturnsEmpty(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "glob",
 		Arguments: `{"pattern": "*.xyz", "path": "/workspace"}`,
@@ -467,21 +469,21 @@ func TestGlobNoMatchesReturnsEmpty(t *testing.T) {
 
 func TestGitDiffReturnsChanges(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	out, err := sandbox.Exec(h, "cd /workspace && echo -n 'original' > file.txt && git init && git config --global safe.directory /workspace && git config user.email test@test.com && git config user.name test && git add . && git commit -m init 2>&1")
+	out, err := sandbox.Exec(context.Background(), h, "cd /workspace && echo -n 'original' > file.txt && git init && git config --global safe.directory /workspace && git config user.email test@test.com && git config user.name test && git add . && git commit -m init 2>&1")
 	if err != nil {
 		t.Fatalf("failed to setup git repo: %v\noutput: %s", err, out)
 	}
 
 	// Modify the file (separate exec call since the first one creates the repo)
-	_, err = sandbox.Exec(h, "cd /workspace && echo -n 'modified' > file.txt")
+	_, err = sandbox.Exec(context.Background(), h, "cd /workspace && echo -n 'modified' > file.txt")
 	if err != nil {
 		t.Fatalf("failed to modify file: %v", err)
 	}
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "git_diff",
 		Arguments: `{}`,
@@ -496,15 +498,15 @@ func TestGitDiffReturnsChanges(t *testing.T) {
 
 func TestGitDiffNoChangesReturnsEmpty(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
-	_, err := sandbox.Exec(h, "cd /workspace && echo -n 'content' > file.txt && git init && git config --global safe.directory /workspace && git config user.email test@test.com && git config user.name test && git add . && git commit -m init 2>&1")
+	_, err := sandbox.Exec(context.Background(), h, "cd /workspace && echo -n 'content' > file.txt && git init && git config --global safe.directory /workspace && git config user.email test@test.com && git config user.name test && git add . && git commit -m init 2>&1")
 	if err != nil {
 		t.Fatalf("failed to setup clean git repo: %v", err)
 	}
 
-	result := reg.Execute(core.ToolCall{
+	result := reg.Execute(context.Background(), core.ToolCall{
 		ID:        "c1",
 		Name:      "git_diff",
 		Arguments: `{}`,
@@ -519,7 +521,7 @@ func TestGitDiffNoChangesReturnsEmpty(t *testing.T) {
 
 func TestAllToolsExecuteThroughSandbox(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
 	defs := reg.ToolDefinitions()
@@ -538,7 +540,7 @@ func TestAllToolsExecuteThroughSandbox(t *testing.T) {
 
 func TestToolSchemasDefineRequiredArgs(t *testing.T) {
 	h := startSandbox(t)
-	reg := tools.New(h)
+	reg := tools.New(sandbox.NewDockerExecer(h))
 	tools.RegisterAll(reg)
 
 	defs := reg.ToolDefinitions()
@@ -571,4 +573,54 @@ func contains(ss []string, s string) bool {
 		}
 	}
 	return false
+}
+
+
+// ---------------------------------------------------------------------------
+// mockExecer for unit tests (no Docker)
+// ---------------------------------------------------------------------------
+
+type mockExecer struct {
+	fn func(ctx context.Context, command string) (string, error)
+}
+
+func (m *mockExecer) Exec(ctx context.Context, command string) (string, error) {
+	return m.fn(ctx, command)
+}
+
+func TestMockExecerReadFile(t *testing.T) {
+	ex := &mockExecer{fn: func(_ context.Context, cmd string) (string, error) {
+		return "mock content", nil
+	}}
+	reg := tools.New(ex)
+	tools.RegisterAll(reg)
+
+	result := reg.Execute(context.Background(), core.ToolCall{
+		ID:        "c1",
+		Name:      "read_file",
+		Arguments: `{"path": "/test/file.txt"}`,
+	})
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if result.Content != "mock content" {
+		t.Fatalf("expected 'mock content', got %q", result.Content)
+	}
+}
+
+func TestMockExecerError(t *testing.T) {
+	ex := &mockExecer{fn: func(_ context.Context, cmd string) (string, error) {
+		return "exec error", fmt.Errorf("exec failed")
+	}}
+	reg := tools.New(ex)
+	tools.RegisterAll(reg)
+
+	result := reg.Execute(context.Background(), core.ToolCall{
+		ID:        "c1",
+		Name:      "read_file",
+		Arguments: `{"path": "/test/file.txt"}`,
+	})
+	if !result.IsError {
+		t.Fatal("expected error")
+	}
 }

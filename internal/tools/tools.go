@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -12,7 +13,7 @@ import (
 
 var _ agent.ToolExecutor = (*Registry)(nil)
 
-type ToolFn func(*sandbox.SessionHandle, core.ToolCall) core.ToolResult
+type ToolFn func(ctx context.Context, ex sandbox.Execer, call core.ToolCall) core.ToolResult
 
 type Tool struct {
 	Name        string
@@ -24,13 +25,13 @@ type Tool struct {
 
 type Registry struct {
 	tools  map[string]Tool
-	handle *sandbox.SessionHandle
+	shell sandbox.Execer
 }
 
-func New(h *sandbox.SessionHandle) *Registry {
+func New(shell sandbox.Execer) *Registry {
 	return &Registry{
-		tools:  make(map[string]Tool),
-		handle: h,
+		tools: make(map[string]Tool),
+		shell: shell,
 	}
 }
 
@@ -61,7 +62,7 @@ func (r *Registry) IsReadOnly(name string) bool {
 	return ok && tool.IsReadOnly
 }
 
-func (r *Registry) Execute(call core.ToolCall) core.ToolResult {
+func (r *Registry) Execute(ctx context.Context, call core.ToolCall) core.ToolResult {
 	tool, ok := r.tools[call.Name]
 	if !ok {
 		return core.ToolResult{
@@ -77,7 +78,7 @@ func (r *Registry) Execute(call core.ToolCall) core.ToolResult {
 			Content:    err.Error(),
 		}
 	}
-	return tool.Execute(r.handle, call)
+	return tool.Execute(ctx, r.shell, call)
 }
 
 func validateArgs(schema map[string]any, raw string) error {
@@ -171,14 +172,14 @@ func readFileTool() Tool {
 			},
 			"required": []any{"path"},
 		},
-		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+		Execute: func(ctx context.Context, ex sandbox.Execer, call core.ToolCall) core.ToolResult {
 			var args struct {
 				Path string `json:"path"`
 			}
 			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
 			}
-			out, err := sandbox.Exec(h, "cat "+quote(args.Path))
+			out, err := ex.Exec(ctx, "cat "+quote(args.Path))
 			if err != nil {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
 			}
@@ -200,7 +201,7 @@ func writeFileTool() Tool {
 			},
 			"required": []any{"path", "content"},
 		},
-		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+		Execute: func(ctx context.Context, ex sandbox.Execer, call core.ToolCall) core.ToolResult {
 			var args struct {
 				Path    string `json:"path"`
 				Content string `json:"content"`
@@ -209,7 +210,7 @@ func writeFileTool() Tool {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
 			}
 			cmd := "printf '%s' " + quote(args.Content) + " > " + quote(args.Path)
-			out, err := sandbox.Exec(h, cmd)
+			out, err := ex.Exec(ctx, cmd)
 			if err != nil {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
 			}
@@ -232,7 +233,7 @@ func editFileTool() Tool {
 			},
 			"required": []any{"path", "old_string", "new_string"},
 		},
-		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+		Execute: func(ctx context.Context, ex sandbox.Execer, call core.ToolCall) core.ToolResult {
 			var args struct {
 				Path     string `json:"path"`
 				OldValue string `json:"old_string"`
@@ -242,7 +243,7 @@ func editFileTool() Tool {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
 			}
 			cmd := "sed -i 's/" + escapeSed(args.OldValue) + "/" + escapeSed(args.NewValue) + "/g' " + quote(args.Path)
-			out, err := sandbox.Exec(h, cmd)
+			out, err := ex.Exec(ctx, cmd)
 			if err != nil {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
 			}
@@ -263,14 +264,14 @@ func bashTool() Tool {
 			},
 			"required": []any{"command"},
 		},
-		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+		Execute: func(ctx context.Context, ex sandbox.Execer, call core.ToolCall) core.ToolResult {
 			var args struct {
 				Command string `json:"command"`
 			}
 			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
 			}
-			out, err := sandbox.Exec(h, args.Command+" 2>&1")
+			out, err := ex.Exec(ctx, args.Command+" 2>&1")
 			if err != nil {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
 			}
@@ -292,7 +293,7 @@ func grepTool() Tool {
 			},
 			"required": []any{"pattern", "path"},
 		},
-		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+		Execute: func(ctx context.Context, ex sandbox.Execer, call core.ToolCall) core.ToolResult {
 			var args struct {
 				Pattern string `json:"pattern"`
 				Path    string `json:"path"`
@@ -301,7 +302,7 @@ func grepTool() Tool {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
 			}
 			cmd := "grep -rn " + quote(args.Pattern) + " " + quote(args.Path) + " 2>/dev/null || true"
-			out, err := sandbox.Exec(h, cmd)
+			out, err := ex.Exec(ctx, cmd)
 			if err != nil {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
 			}
@@ -324,7 +325,7 @@ func globTool() Tool {
 			},
 			"required": []any{"pattern", "path"},
 		},
-		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
+		Execute: func(ctx context.Context, ex sandbox.Execer, call core.ToolCall) core.ToolResult {
 			var args struct {
 				Pattern string `json:"pattern"`
 				Path    string `json:"path"`
@@ -333,7 +334,7 @@ func globTool() Tool {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: err.Error()}
 			}
 			cmd := "find " + quote(args.Path) + " -type f -name " + quote(args.Pattern) + " 2>/dev/null || true"
-			out, err := sandbox.Exec(h, cmd)
+			out, err := ex.Exec(ctx, cmd)
 			if err != nil {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
 			}
@@ -352,8 +353,8 @@ func gitDiffTool() Tool {
 			"type":       "object",
 			"properties": map[string]any{},
 		},
-		Execute: func(h *sandbox.SessionHandle, call core.ToolCall) core.ToolResult {
-			out, err := sandbox.Exec(h, "cd /workspace && git diff 2>/dev/null || true")
+		Execute: func(ctx context.Context, ex sandbox.Execer, call core.ToolCall) core.ToolResult {
+			out, err := ex.Exec(ctx, "cd /workspace && git diff 2>/dev/null || true")
 			if err != nil {
 				return core.ToolResult{ToolCallID: call.ID, IsError: true, Content: out}
 			}
