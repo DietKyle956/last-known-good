@@ -115,10 +115,10 @@ func TestSaveToolCall(t *testing.T) {
 	}
 
 	tcs := []struct {
-		name      string
-		args      string
-		result    string
-		isError   bool
+		name       string
+		args       string
+		result     string
+		isError    bool
 		durationMs int64
 	}{
 		{"read_file", `{"path":"test.txt"}`, "file contents", false, 5},
