@@ -20,7 +20,11 @@ func startSandbox(t *testing.T) *sandbox.SessionHandle {
 	if err != nil {
 		t.Fatalf("sandbox.Start failed: %v", err)
 	}
-	t.Cleanup(func() { sandbox.Stop(h) })
+	t.Cleanup(func() {
+		if err := sandbox.Stop(h); err != nil {
+			t.Errorf("failed to stop sandbox: %v", err)
+		}
+	})
 	_, err = sandbox.Exec(h, "apk add --no-cache git >/dev/null 2>&1")
 	if err != nil {
 		t.Fatalf("failed to install git: %v", err)
@@ -319,8 +323,8 @@ func TestEditFileReplacesText(t *testing.T) {
 	}
 
 	result := reg.Execute(core.ToolCall{
-		ID:   "c1",
-		Name: "edit_file",
+		ID:        "c1",
+		Name:      "edit_file",
 		Arguments: `{"path": "/workspace/edit.txt", "old_string": "old line", "new_string": "new line"}`,
 	})
 	if result.IsError {
