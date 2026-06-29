@@ -258,6 +258,35 @@ func TestDeepSeekClientRequestPayloadShape(t *testing.T) {
 	}
 }
 
+func TestAPIKeyForModelDefaultsToEnvKey(t *testing.T) {
+	t.Setenv(EnvFlashKey, "")
+	t.Setenv(EnvProKey, "")
+	t.Setenv(EnvKey, "fallback-key")
+
+	if got := APIKeyForModel("deepseek-v4-flash"); got != "fallback-key" {
+		t.Errorf("expected fallback-key, got %q", got)
+	}
+	if got := APIKeyForModel("deepseek-v4-pro"); got != "fallback-key" {
+		t.Errorf("expected fallback-key, got %q", got)
+	}
+	if got := APIKeyForModel("unknown-model"); got != "fallback-key" {
+		t.Errorf("expected fallback-key, got %q", got)
+	}
+}
+
+func TestAPIKeyForModelPrefersModelSpecificKey(t *testing.T) {
+	t.Setenv(EnvFlashKey, "flash-key-123")
+	t.Setenv(EnvProKey, "pro-key-456")
+	t.Setenv(EnvKey, "fallback-key")
+
+	if got := APIKeyForModel("deepseek-v4-flash"); got != "flash-key-123" {
+		t.Errorf("expected flash-key-123, got %q", got)
+	}
+	if got := APIKeyForModel("deepseek-v4-pro"); got != "pro-key-456" {
+		t.Errorf("expected pro-key-456, got %q", got)
+	}
+}
+
 func TestDeepSeekClientMalformedResponseReturnsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
