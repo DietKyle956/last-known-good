@@ -1,6 +1,7 @@
 # LKG-001: Project Scaffold & CI Pipeline — Complete
 # LKG-002: AgentEvent Types & Core Agent Loop — Complete
 # LKG-003: DeepSeek API Client — Complete
+# LKG-004: Docker Sandbox Lifecycle — Complete
 
 ## Summary
 
@@ -42,6 +43,16 @@ Docker Compose dev environment, and GitHub Actions CI.
 - **Error handling**: malformed responses return errors via the result channel, no panics
 - **Test coverage**: 12 tests across types, non-streaming, streaming, thinking, reasoning effort, request payload shape, and error paths
 
+## What was built (LKG-004)
+
+- **`SessionHandle`** — opaque handle with no host filesystem path (tools receive only this handle)
+- **`Start(projectDir)`** — creates one Docker container per session with `docker run -d --rm`, bind-mounts project dir at `/workspace`, uses `alpine` image with `sleep infinity`
+- **`Exec(handle, command)`** — runs commands in the same container via `docker exec`, reuses the container across calls within a session
+- **`Stop(handle)`** — removes the container with `docker rm -f`, no orphaned containers
+- **Bind mount**: files written on host are visible at `/workspace` inside container and vice versa
+- **Isolation**: files outside the mounted project directory are not accessible from inside the container
+- **Test coverage**: 7 tests against real Docker daemon — container creation/removal, command reuse, bidirectional file visibility, filesystem isolation, interrupt cleanup, orphan prevention
+
 ## Package structure
 
 ```
@@ -49,7 +60,7 @@ cmd/agent/          main.go + cmd/ (root, chat, run)
 internal/
   agent/            core agent loop + event types (complete)
   llm/              DeepSeek API client (complete)
-  sandbox/          Docker sandbox (stub)
+  sandbox/          Docker sandbox lifecycle (complete)
   tools/            tool interface & registry (stub)
   hooks/            hooks framework (stub)
   skills/           skills system (stub)
@@ -99,3 +110,15 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 | 6 | Thinking mode in request body |
 | 7 | Reasoning effort in request body |
 | 8 | Request payload shape matches DeepSeek API format |
+
+### LKG-004 slices
+
+| Slice | What |
+|-------|------|
+| 1 | `Start` creates a container, `Stop` removes it |
+| 2 | `Exec` runs commands and reuses the same container |
+| 3 | File written on host is visible inside container |
+| 4 | File written inside container is visible on host |
+| 5 | Files outside mount are inaccessible from container |
+| 6 | Container removed on simulated interrupt |
+| 7 | No orphaned containers after session ends |
