@@ -16,18 +16,27 @@ func containerExists(t *testing.T, containerID string) bool {
 	return strings.TrimSpace(string(out)) != ""
 }
 
-func TestExecRunsCommandAndReusesContainer(t *testing.T) {
+func startDefault(t *testing.T) *SessionHandle {
+	t.Helper()
 	dir, err := os.MkdirTemp("", "sandbox-test-*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
-
-	h, err := Start(dir)
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	h, err := Start(dir, SandboxConfig{})
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
-	defer func() { _ = Stop(h) }()
+	t.Cleanup(func() {
+		if err := Stop(h); err != nil {
+			t.Errorf("failed to stop sandbox: %v", err)
+		}
+	})
+	return h
+}
+
+func TestExecRunsCommandAndReusesContainer(t *testing.T) {
+	h := startDefault(t)
 
 	out1, err := Exec(h, "echo hello-1")
 	if err != nil {
@@ -53,7 +62,7 @@ func TestFileWrittenOnHostVisibleInsideContainer(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
-	h, err := Start(dir)
+	h, err := Start(dir, SandboxConfig{})
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -80,7 +89,7 @@ func TestFileWrittenInsideContainerVisibleOnHost(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
-	h, err := Start(dir)
+	h, err := Start(dir, SandboxConfig{})
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -116,7 +125,7 @@ func TestFilesOutsideMountNotAccessibleFromContainer(t *testing.T) {
 	}
 	defer os.RemoveAll(dir + "-outside")
 
-	h, err := Start(dir)
+	h, err := Start(dir, SandboxConfig{})
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -135,12 +144,11 @@ func TestContainerRemovedOnInterruptSignal(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
-	h, err := Start(dir)
+	h, err := Start(dir, SandboxConfig{})
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
 
-	// Simulate interrupt by calling Stop (signal cleanup calls Stop)
 	if err := Stop(h); err != nil {
 		t.Fatalf("Stop failed: %v", err)
 	}
@@ -157,7 +165,7 @@ func TestNoOrphanedContainersAfterSessionEnds(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
-	h, err := Start(dir)
+	h, err := Start(dir, SandboxConfig{})
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -182,7 +190,7 @@ func TestStartCreatesContainerAndStopRemovesIt(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
-	h, err := Start(dir)
+	h, err := Start(dir, SandboxConfig{})
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -200,5 +208,95 @@ func TestStartCreatesContainerAndStopRemovesIt(t *testing.T) {
 
 	if containerExists(t, h.id) {
 		t.Fatal("container still exists after Stop")
+	}
+}
+
+func TestDefaultNoNetworkBlocksOutbound(t *testing.T) {
+	h := startDefault(t)
+
+	_, err := Exec(h, "wget -q -O- --timeout=5 http://example.com")
+	if err == nil {
+		t.Fatal("expected outbound network to be blocked by default")
+	}
+}
+
+func TestAllowlistReachesAllowedDomain(t *testing.T) {
+	dir, err := os.MkdirTemp("", "sandbox-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	h, err := Start(dir, SandboxConfig{
+		Network: &NetworkConfig{Allow: []string{"example.com"}},
+	})
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer func() { _ = Stop(h) }()
+
+	out, err := Exec(h, "wget -q -O- --timeout=10 http://example.com")
+	if err != nil {
+		t.Fatalf("expected allowed domain to be reachable: %v", err)
+	}
+	if !strings.Contains(out, "Example Domain") && !strings.Contains(out, "example") {
+		t.Fatalf("unexpected content from example.com: %q", out)
+	}
+}
+
+func TestAllowlistBlocksOtherDomains(t *testing.T) {
+	dir, err := os.MkdirTemp("", "sandbox-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	h, err := Start(dir, SandboxConfig{
+		Network: &NetworkConfig{Allow: []string{"example.com"}},
+	})
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer func() { _ = Stop(h) }()
+
+	_, err = Exec(h, "wget -q -O- --timeout=5 http://google.com")
+	if err == nil {
+		t.Fatal("expected non-allowed domain to be unreachable")
+	}
+}
+
+func TestCPUAndMemoryLimitsApplied(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker not available")
+	}
+	dir, err := os.MkdirTemp("", "sandbox-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	h, err := Start(dir, SandboxConfig{
+		CPU:    "0.5",
+		Memory: "128m",
+	})
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer func() { _ = Stop(h) }()
+
+	cpuOut, err := exec.Command("docker", "inspect", h.id, "--format", "{{.HostConfig.NanoCpus}}").Output()
+	if err != nil {
+		t.Fatalf("docker inspect failed: %v", err)
+	}
+	if strings.TrimSpace(string(cpuOut)) != "500000000" {
+		t.Fatalf("expected NanoCpus 500000000, got %q", strings.TrimSpace(string(cpuOut)))
+	}
+
+	memOut, err := exec.Command("docker", "inspect", h.id, "--format", "{{.HostConfig.Memory}}").Output()
+	if err != nil {
+		t.Fatalf("docker inspect failed: %v", err)
+	}
+	if strings.TrimSpace(string(memOut)) != "134217728" {
+		t.Fatalf("expected Memory 134217728, got %q", strings.TrimSpace(string(memOut)))
 	}
 }
