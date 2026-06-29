@@ -7,6 +7,7 @@
 # LKG-008: Session Resume — Complete
 # LKG-009: Full TUI Shell — Complete
 # LKG-010: Sandbox Network Policy & Resource Limits — Complete
+# LKG-011: Single-Shot CLI Mode — Complete
 
 ## Summary
 
@@ -120,6 +121,15 @@ Docker Compose dev environment, and GitHub Actions CI.
 - **Memory limits**: `--memory` flag passed to `docker run` when `cfg.Memory` is set
 - **Test coverage**: 4 new tests against real Docker containers — default no-network, allowlist reachable, allowlist blocks others, CPU/memory limits verified via `docker inspect`
 
+## What was built (LKG-011)
+
+- **`internal/singleshot`** — a renderer that subscribes to `<-chan agent.AgentEvent` and writes output to `io.Writer`, consuming the same event channel pattern as the TUI (no separate code path for driving the agent)
+- **Text mode**: outputs model response chunks to stdout as plain text; returns nil on `EventTurnComplete`, returns error on `EventError`
+- **JSON mode** (`--json` flag): outputs structured JSON with `content`, `success`, and `tool_calls` fields; sets `success=false` and returns an error on agent failure for non-zero exit codes
+- **`agent run <prompt>`**: wired with a DeepSeek LLM client, a Docker sandbox, and all seven built-in tools via `tools.Registry`; uses `cobra.ExactArgs(1)` for prompt validation
+- **Exit codes**: RunE propagates the renderer error so the process exits with zero on success and non-zero on failure
+- **Test coverage**: 6 tests across text rendering, JSON rendering, error propagation, flag registration, and arg validation
+
 ## Package structure
 
 ```
@@ -130,6 +140,7 @@ internal/
   llm/              DeepSeek API client (complete)
   sandbox/          Docker sandbox lifecycle (complete)
   tools/            tool registry + 7 built-in sandbox tools (complete)
+  singleshot/       single-shot CLI renderer (text + JSON) (complete)
   store/            SQLite session persistence (complete)
   session/          session resume & lifecycle management (complete)
   tui/              Bubble Tea terminal UI (complete)
@@ -229,6 +240,15 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 | 2 | Allowlist with per-domain `/etc/hosts` entries and DNS block via `/etc/resolv.conf` |
 | 3 | CPU and memory limits via `--cpus` and `--memory` |
 | 4 | Tests: default blocks outbound, allowlist reaches domain, allowlist blocks other, limits verified |
+
+### LKG-011 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Text renderer outputs chunks to writer, exits on TurnComplete |
+| 2 | JSON renderer produces structured output with content + tool calls |
+| 3 | Error handling — text returns error, JSON sets success=false + returns error |
+| 4 | Wire into `agent run` command with `--json` flag and prompt arg |
 
 ### LKG-006 slices
 
