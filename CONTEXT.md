@@ -1,11 +1,12 @@
 # LKG-001: Project Scaffold & CI Pipeline — Complete
+# LKG-002: AgentEvent Types & Core Agent Loop — Complete
 
 ## Summary
 
 Initialized Last Known Good as a Go binary with Cobra CLI, internal package skeletons,
 Docker Compose dev environment, and GitHub Actions CI.
 
-## What was built
+## What was built (LKG-001)
 
 - **Go module**: `github.com/DietKyle956/last-known-good` (Go 1.26)
 - **Entrypoint**: `cmd/agent/main.go` with Cobra root command
@@ -16,12 +17,23 @@ Docker Compose dev environment, and GitHub Actions CI.
 - **Import constraint**: `.github/check-imports.sh` prevents domain → infra imports
 - **Lint**: `.golangci.yml` config with gofmt, govet, errcheck, staticcheck, unused, ineffassign
 
+## What was built (LKG-002)
+
+- **`AgentEvent`** typed event stream with `EventModelResponseChunk`, `EventToolCallStarted`, `EventToolCallFinished`, `EventTurnComplete`, `EventError`
+- **`Agent`** core loop that builds messages, calls the model, dispatches tool calls, appends tool results, and loops until a final content turn completes
+- **`Message`**, **`ToolCall`**, **`ToolResult`** — core conversation types
+- **`LLM` interface** (`Chat(messages) → <-chan Result`) for model backends
+- **`ToolExecutor` interface** (`Execute`, `IsReadOnly`) for tool dispatch
+- Read-only tool calls execute concurrently; write tool calls execute sequentially
+- All lifecycle events emitted synchronously in deterministic order
+- Event channel is the sole instrumentation boundary
+
 ## Package structure
 
 ```
 cmd/agent/          main.go + cmd/ (root, chat, run)
 internal/
-  agent/            core agent loop (stub)
+  agent/            core agent loop + event types (complete)
   llm/              LLM client (stub)
   sandbox/          Docker sandbox (stub)
   tools/            tool interface & registry (stub)
@@ -36,6 +48,8 @@ internal/
 
 Built with vertical tracer-bullet slices — one test → one implementation per cycle.
 
+### LKG-001 slices
+
 | Slice | What |
 |-------|------|
 | 1 | Module + binary that builds and prints help |
@@ -45,3 +59,16 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 | 5 | Docker Compose dev environment |
 | 6 | GitHub Actions CI pipeline |
 | 7 | Lint config + import constraint enforcement |
+
+### LKG-002 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Core types + agent emits TurnComplete when model returns content |
+| 2 | Agent dispatches tool calls and loops back to model |
+| 3 | Tool call lifecycle events (ToolCallStarted, ToolCallFinished) |
+| 4 | Chunk events (ModelResponseChunk) |
+| 5 | Error events (LLM failure + stream error) |
+| 6 | Event ordering for multi-tool sequence |
+| 7 | Parallel read-only tool execution |
+| 8 | Sequential write tool execution |
