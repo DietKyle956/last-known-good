@@ -3,7 +3,7 @@
 *.dll
 *.so
 *.dylib
-agent
+/agent
 /tmp/
 
 # Go
@@ -24,6 +24,3 @@ Thumbs.db
 
 # Docker
 .docker/
-
-# Test artifacts
-/tmp/lkg-agent-test
