@@ -6,9 +6,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/DietKyle956/last-known-good/internal/core"
+)
+
+const (
+	EnvFlashKey = "DEEPSEEK_FLASH_KEY"
+	EnvProKey   = "DEEPSEEK_PRO_KEY"
+	EnvKey      = "DEEPSEEK_API_KEY"
 )
 
 // DeepSeekConfig configures a DeepSeek client.
@@ -25,6 +32,20 @@ type DeepSeekConfig struct {
 type DeepSeekClient struct {
 	config DeepSeekConfig
 	http   *http.Client
+}
+
+func APIKeyForModel(model string) string {
+	switch model {
+	case "deepseek-v4-flash":
+		if k := os.Getenv(EnvFlashKey); k != "" {
+			return k
+		}
+	case "deepseek-v4-pro":
+		if k := os.Getenv(EnvProKey); k != "" {
+			return k
+		}
+	}
+	return os.Getenv(EnvKey)
 }
 
 // NewDeepSeekClient creates a new DeepSeek client.
