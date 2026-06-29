@@ -5,6 +5,7 @@
 # LKG-006: Built-in Sandbox Tool Set — Complete
 # LKG-007: SQLite Session Persistence — Complete
 # LKG-008: Session Resume — Complete
+# LKG-009: Full TUI Shell — Complete
 
 ## Summary
 
@@ -94,6 +95,21 @@ Docker Compose dev environment, and GitHub Actions CI.
 - **No domain → infra imports**: `session` is not in the domain list, so it can safely import `store` without violating the import constraint
 - **Test coverage**: 5 tests — resume loads messages, non-existent session error, save to session, round-trip equivalence, message type checks
 
+## What was built (LKG-009)
+
+- **`internal/tui`** — Bubble Tea terminal UI with `tea.Model` interface
+- **`tui.New(events, submit)`** — creates a model that subscribes to an `<-chan agent.AgentEvent` and sends user prompts via `chan<- string`
+- **Omarchy palette**: dark navy background (`#00172e`), cream text (`#f6dcac`), teal assistant labels (`#028391`), orange user text (`#faa968`), muted teal tool bodies (`#3f8f8a`), light teal results (`#8cbfb8`), orange-red errors (`#f85525`)
+- **Scrolling viewport**: single conversation viewport using `bubbles/viewport.Model`
+- **Streaming chunks**: model response chunks accumulate into a single assistant message line
+- **Tool call blocks**: inline collapsed blocks with one-line summary; expand to show full detail
+- **Error tool calls**: shown expanded by default with bold orange-red styling
+- **Fixed input bar**: always visible at the bottom, styled with the Omarchy palette
+- **Coordinator loop**: goroutine manages agent lifecycle across turns — creates new agent per turn, forwards events to shared channel, waits for user prompts via submit channel
+- **Chat command**: `agent chat` launches the TUI with a DeepSeek LLM client and stub tool executor
+- **Import constraint**: `tui` is a domain package; does not import any infrastructure packages
+- **Test coverage**: 11 tests — model initialization, event handling, chunk accumulation, channel consumption, prompt submission, tool call lifecycle, and error display
+
 ## Package structure
 
 ```
@@ -106,6 +122,7 @@ internal/
   tools/            tool registry + 7 built-in sandbox tools (complete)
   store/            SQLite session persistence (complete)
   session/          session resume & lifecycle management (complete)
+  tui/              Bubble Tea terminal UI (complete)
 ```
 
 ## TDD approach
@@ -182,6 +199,17 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 | 2 | `session.Resume` — load messages from a session, error on missing |
 | 3 | `session.SaveMessages` — persist new messages to an existing session |
 | 4 | Full round-trip state equivalence — save, resume, verify identity |
+
+### LKG-009 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Package compiles, minimal Bubble Tea model initializes |
+| 2 | Event channel consumption — streaming chunks render in viewport |
+| 3 | Input bar and prompt submission via submit channel |
+| 4 | Tool call blocks (collapsed by default) |
+| 5 | Error tool calls (expanded, distinct styling) |
+| 6 | Wire into chat command |
 
 ### LKG-006 slices
 
