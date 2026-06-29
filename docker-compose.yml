@@ -1,0 +1,12 @@
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/src
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /src
+    entrypoint: ["go", "run", "./cmd/agent"]
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
