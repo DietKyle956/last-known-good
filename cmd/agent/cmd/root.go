@@ -11,7 +11,7 @@ var rootCmd = &cobra.Command{
 	Use:   "agent",
 	Short: "Last Known Good — an autonomous coding agent",
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+		_ = cmd.Help()
 	},
 }
 
