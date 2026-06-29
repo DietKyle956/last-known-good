@@ -1,5 +1,6 @@
 # LKG-001: Project Scaffold & CI Pipeline — Complete
 # LKG-002: AgentEvent Types & Core Agent Loop — Complete
+# LKG-003: DeepSeek API Client — Complete
 
 ## Summary
 
@@ -28,13 +29,26 @@ Docker Compose dev environment, and GitHub Actions CI.
 - All lifecycle events emitted synchronously in deterministic order
 - Event channel is the sole instrumentation boundary
 
+## What was built (LKG-003)
+
+- **`DeepSeekClient`** implements `agent.LLM` for DeepSeek's OpenAI-compatible chat completions endpoint
+- **Project-owned request/response structs** — `DeepSeekRequest`, `DeepSeekResponse`, `DeepSeekChunk`, etc. — no third-party SDK types
+- **Non-streaming mode**: returns complete content in one response
+- **Streaming mode**: yields content chunks via server-sent events and terminates on `[DONE]`
+- **Model targeting**: supports `deepseek-v4-pro` and `deepseek-v4-flash` via `DeepSeekConfig.Model`
+- **Thinking mode**: `{"thinking": {"type": "enabled"}}` in the request body
+- **Reasoning effort**: supports `reasoning_effort` values (`high`, `max`, etc.)
+- **Tool call parsing**: extracts `ToolCall` (ID, name, arguments) from response
+- **Error handling**: malformed responses return errors via the result channel, no panics
+- **Test coverage**: 12 tests across types, non-streaming, streaming, thinking, reasoning effort, request payload shape, and error paths
+
 ## Package structure
 
 ```
 cmd/agent/          main.go + cmd/ (root, chat, run)
 internal/
   agent/            core agent loop + event types (complete)
-  llm/              LLM client (stub)
+  llm/              DeepSeek API client (complete)
   sandbox/          Docker sandbox (stub)
   tools/            tool interface & registry (stub)
   hooks/            hooks framework (stub)
@@ -72,3 +86,16 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 | 6 | Event ordering for multi-tool sequence |
 | 7 | Parallel read-only tool execution |
 | 8 | Sequential write tool execution |
+
+### LKG-003 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Request/response structs with JSON round-trip |
+| 2 | Non-streaming Chat returns complete content |
+| 3 | Tool call parsing from response |
+| 4 | Streaming yields content chunks |
+| 5 | Malformed response returns error |
+| 6 | Thinking mode in request body |
+| 7 | Reasoning effort in request body |
+| 8 | Request payload shape matches DeepSeek API format |
