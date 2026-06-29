@@ -118,16 +118,22 @@ func (m *Model) View() string {
 		Foreground(lipgloss.Color("#faa968")).
 		Render("> ")
 
-	inputLine := inputPrompt + m.input
+	cursor := "█"
+	inputLine := inputPrompt + m.input + cursor
 
 	inputStyle := lipgloss.NewStyle().
 		Width(m.width).
-		Background(lipgloss.Color("#00172e")).
+		Background(lipgloss.Color("#0a1e3d")).
 		Foreground(lipgloss.Color("#f6dcac"))
+
+	separator := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#3f8f8a")).
+		Render(strings.Repeat("─", m.width))
 
 	return lipgloss.JoinVertical(
 		lipgloss.Top,
 		m.viewport.View(),
+		separator,
 		inputStyle.Render(inputLine),
 	)
 }
@@ -142,9 +148,15 @@ func (m *Model) renderMessages() string {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString(l.style.MaxWidth(wrapWidth).Render(l.content))
+		b.WriteString(l.style.Width(wrapWidth).Render(l.content))
 	}
 	return b.String()
+}
+
+func (m *Model) removeThinking() {
+	if len(m.messages) > 0 && m.messages[len(m.messages)-1].content == "…" {
+		m.messages = m.messages[:len(m.messages)-1]
+	}
 }
 
 func (m *Model) appendUserMessage(content string) {
@@ -156,6 +168,10 @@ func (m *Model) appendUserMessage(content string) {
 
 	m.messages = append(m.messages, conversationLine{content: "You", style: userLabelStyle})
 	m.messages = append(m.messages, conversationLine{content: content, style: userContentStyle})
+	m.messages = append(m.messages, conversationLine{
+		content: "…",
+		style:   lipgloss.NewStyle().Foreground(lipgloss.Color("#a7c9c6")).Italic(true),
+	})
 	m.streaming = false
 	m.viewport.SetContent(m.renderMessages())
 	m.viewport.GotoBottom()
@@ -165,6 +181,7 @@ func (m *Model) appendChunk(content string) {
 	if m.streaming {
 		m.messages[len(m.messages)-1].content += content
 	} else {
+		m.removeThinking()
 		assistantLabelStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#f6dcac")).
 			Bold(true)
@@ -181,6 +198,7 @@ func (m *Model) appendToolCallStarted(call *core.ToolCall) {
 	if call == nil {
 		return
 	}
+	m.removeThinking()
 	style := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#3f8f8a")).
 		Italic(true)
@@ -228,6 +246,7 @@ func (m *Model) appendError(err error) {
 	if err == nil {
 		return
 	}
+	m.removeThinking()
 	errStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#f85525")).
 		Bold(true)
