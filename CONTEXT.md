@@ -245,3 +245,45 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 | 8 | `git_diff` tool — changes return diff, clean returns empty |
 | 9 | All seven tools registered and schemas validated |
 | 10 | `Exec` uses `CombinedOutput` + `-w /workspace` |
+
+## What was built (LKG-012)
+
+- **Unit tests for pure functions**: 27 tests for `validateArgs`, `validateProperty`, `quote`, `escapeSed` in `internal/tools/tools_internal_test.go` — zero external dependencies, run without Docker
+- **Iterative agent loop**: `agent.loop()` removed, `Run()` now uses a `for` loop — stack depth is O(1) regardless of tool call turns
+- **Session package eliminated**: `internal/session/` deleted; `SaveMessages` and `Resume` moved as methods on `*store.Store` — tests migrated to `store_test.go`
+- **`sandbox.Execer` interface**: narrow `Exec(command) (string, error)` interface extracted; `Sandbox` dead interface removed; `NewDockerExecer` adapter wraps `*SessionHandle` for production; `mockExecer` enables unit tests without Docker
+- **`context.Context` threaded through stack**: all key interfaces (`LLM.Chat`, `ToolExecutor.Execute`, `Agent.Run`, `sandbox.Execer.Exec`, `sandbox.Exec`) now accept `ctx`; `http.NewRequestWithContext` used in LLM client; `exec.CommandContext` used in sandbox; cancellation tests added
+- **`Session` type extracted**: multi-turn agent lifecycle formalized as `internal/agent.Session` with `Run(ctx, messages, submit, events)` — replaces inline `coordinator` goroutine in `chat.go`; tested for single/multi-turn, empty prompt, and context cancellation
+
+## Package structure
+
+```
+cmd/agent/          main.go + cmd/ (root, chat, run)
+internal/
+  core/             shared domain types (Message, ToolCall, ToolResult, Result)
+  agent/            core agent loop + event types + Session (complete)
+  llm/              DeepSeek API client (complete)
+  sandbox/          Docker sandbox lifecycle + Execer interface (complete)
+  tools/            tool registry + 7 built-in sandbox tools (complete)
+  singleshot/       single-shot CLI renderer (text + JSON) (complete)
+  store/            SQLite session persistence + SaveMessages/Resume (complete)
+  tui/              Bubble Tea terminal UI (complete)
+```
+
+### LKG-012 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Unit tests for validateArgs, validateProperty, quote, escapeSed |
+| 2 | Flatten recursive agent loop into iterative for loop |
+| 3 | Eliminate session package, move logic to store |
+| 4 | Activate sandbox Execer interface, remove dead Sandbox interface |
+| 5 | Thread context.Context through agent, llm, sandbox, tools, CLI |
+| 6 | Extract Session type from chat.go coordinator |
+
+### LKG-006 updated
+
+- **`ToolFn`** signature changed to `func(ctx context.Context, ex sandbox.Execer, call core.ToolCall) core.ToolResult` — tools receive an `Execer` instead of `*SessionHandle`
+- **`Registry`** stores a `sandbox.Execer` instead of `*SessionHandle`
+- **Mock-based tests**: `mockExecer` enables tool tests without Docker (2 new unit tests)
+- **`dockerExecer` adapter**: `NewDockerExecer(h)` wraps `*SessionHandle` for production use
