@@ -70,6 +70,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "enter":
 			if strings.TrimSpace(m.input) != "" {
+				m.appendUserMessage(strings.TrimSpace(m.input))
 				m.submit <- strings.TrimSpace(m.input)
 				m.input = ""
 			}
@@ -133,19 +134,41 @@ func (m *Model) View() string {
 
 func (m *Model) renderMessages() string {
 	var b strings.Builder
+	wrapWidth := m.viewport.Width
+	if wrapWidth <= 0 {
+		wrapWidth = 80
+	}
 	for i, l := range m.messages {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString(l.style.Render(l.content))
+		b.WriteString(l.style.MaxWidth(wrapWidth).Render(l.content))
 	}
 	return b.String()
+}
+
+func (m *Model) appendUserMessage(content string) {
+	userLabelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#faa968")).
+		Bold(true)
+	userContentStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#f6dcac"))
+
+	m.messages = append(m.messages, conversationLine{content: "You", style: userLabelStyle})
+	m.messages = append(m.messages, conversationLine{content: content, style: userContentStyle})
+	m.streaming = false
+	m.viewport.SetContent(m.renderMessages())
+	m.viewport.GotoBottom()
 }
 
 func (m *Model) appendChunk(content string) {
 	if m.streaming {
 		m.messages[len(m.messages)-1].content += content
 	} else {
+		assistantLabelStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#f6dcac")).
+			Bold(true)
+		m.messages = append(m.messages, conversationLine{content: "Assistant", style: assistantLabelStyle})
 		assistantStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#f6dcac"))
 		m.messages = append(m.messages, conversationLine{content: content, style: assistantStyle})
 		m.streaming = true

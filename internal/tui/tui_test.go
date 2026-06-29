@@ -56,11 +56,14 @@ func TestAppendChunkCreatesMessage(t *testing.T) {
 		Content: "Hello",
 	})
 
-	if len(m.messages) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(m.messages))
+	if len(m.messages) != 2 {
+		t.Fatalf("expected 2 messages (label + content), got %d", len(m.messages))
 	}
-	if m.messages[0].content != "Hello" {
-		t.Fatalf("expected content 'Hello', got %q", m.messages[0].content)
+	if m.messages[0].content != "Assistant" {
+		t.Fatalf("expected label 'Assistant', got %q", m.messages[0].content)
+	}
+	if m.messages[1].content != "Hello" {
+		t.Fatalf("expected content 'Hello', got %q", m.messages[1].content)
 	}
 }
 
@@ -74,11 +77,14 @@ func TestAppendMultipleChunksSameMessage(t *testing.T) {
 	m.handleEvent(agent.AgentEvent{Type: agent.EventModelResponseChunk, Content: "lo"})
 	m.handleEvent(agent.AgentEvent{Type: agent.EventModelResponseChunk, Content: " world"})
 
-	if len(m.messages) != 1 {
-		t.Fatalf("expected 1 message for all chunks, got %d", len(m.messages))
+	if len(m.messages) != 2 {
+		t.Fatalf("expected 2 messages (label + content), got %d", len(m.messages))
 	}
-	if m.messages[0].content != "Hello world" {
-		t.Fatalf("expected content 'Hello world', got %q", m.messages[0].content)
+	if m.messages[0].content != "Assistant" {
+		t.Fatalf("expected label 'Assistant', got %q", m.messages[0].content)
+	}
+	if m.messages[1].content != "Hello world" {
+		t.Fatalf("expected content 'Hello world', got %q", m.messages[1].content)
 	}
 }
 
@@ -100,11 +106,14 @@ func TestEventsChannelConsumedByModel(t *testing.T) {
 	msg2 := m.waitForEvent()
 	m.Update(msg2)
 
-	if len(m.messages) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(m.messages))
+	if len(m.messages) != 2 {
+		t.Fatalf("expected 2 messages (label + content), got %d", len(m.messages))
 	}
-	if m.messages[0].content != "Streaming text" {
-		t.Fatalf("expected 'Streaming text', got %q", m.messages[0].content)
+	if m.messages[0].content != "Assistant" {
+		t.Fatalf("expected label 'Assistant', got %q", m.messages[0].content)
+	}
+	if m.messages[1].content != "Streaming text" {
+		t.Fatalf("expected 'Streaming text', got %q", m.messages[1].content)
 	}
 }
 
@@ -128,6 +137,17 @@ func TestSubmitChannelSendsPrompt(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for prompt on submit channel")
+	}
+
+	// User message should be rendered in the viewport
+	if len(m.messages) != 2 {
+		t.Fatalf("expected 2 messages (label + content), got %d", len(m.messages))
+	}
+	if m.messages[0].content != "You" {
+		t.Fatalf("expected label 'You', got %q", m.messages[0].content)
+	}
+	if m.messages[1].content != "hello" {
+		t.Fatalf("expected content 'hello', got %q", m.messages[1].content)
 	}
 }
 
