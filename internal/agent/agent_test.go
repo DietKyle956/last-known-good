@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -13,7 +14,7 @@ type noToolLLM struct {
 	response string
 }
 
-func (m *noToolLLM) Chat(messages []core.Message) (<-chan core.Result, error) {
+func (m *noToolLLM) Chat(_ context.Context, messages []core.Message) (<-chan core.Result, error) {
 	ch := make(chan core.Result, 2)
 	ch <- core.Result{Content: m.response, IsChunk: true}
 	ch <- core.Result{Content: m.response, IsChunk: false, Done: true}
@@ -36,7 +37,7 @@ func TestAgentEmitsTurnCompleteWhenModelReturnsContent(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]core.Message{{Role: "user", Content: "Hi"}})
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Hi"}})
 	<-done
 }
 
@@ -47,7 +48,7 @@ type scriptedLLM struct {
 	messages [][]core.Message
 }
 
-func (s *scriptedLLM) Chat(messages []core.Message) (<-chan core.Result, error) {
+func (s *scriptedLLM) Chat(_ context.Context, messages []core.Message) (<-chan core.Result, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.messages = append(s.messages, messages)
@@ -88,7 +89,7 @@ func TestAgentDispatchesToolCallsAndLoops(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]core.Message{{Role: "user", Content: "List files"}})
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "List files"}})
 	<-done
 
 	// Verify the executor was called with the tool
@@ -140,7 +141,7 @@ func TestAgentEmitsToolLifecycleEvents(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]core.Message{{Role: "user", Content: "Read file"}})
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Read file"}})
 	<-done
 
 	var started, finished bool
@@ -188,7 +189,7 @@ func TestAgentEmitsChunkEventsWithContent(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]core.Message{{Role: "user", Content: "Say hi"}})
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Say hi"}})
 	<-done
 
 	if len(chunks) != 3 {
@@ -213,7 +214,7 @@ func TestAgentEmitsErrorWhenLLMFails(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]core.Message{{Role: "user", Content: "Do something"}})
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Do something"}})
 	<-done
 
 	if len(events) != 1 {
@@ -248,7 +249,7 @@ func TestAgentEmitsErrorWhenResultStreamFails(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]core.Message{{Role: "user", Content: "Do something"}})
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Do something"}})
 	<-done
 
 	var errEvent *AgentEvent
@@ -296,7 +297,7 @@ func TestAgentEventOrderForToolSequence(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]core.Message{{Role: "user", Content: "Read both"}})
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Read both"}})
 	<-done
 
 	// Filter to lifecycle events (skip chunks for ordering check)
@@ -348,7 +349,7 @@ func TestWriteToolsRunSequentially(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]core.Message{{Role: "user", Content: "write"}})
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "write"}})
 	<-done
 
 	exec.mu.Lock()
@@ -369,7 +370,7 @@ type sequentialExecutor struct {
 	finished []int64
 }
 
-func (s *sequentialExecutor) Execute(call core.ToolCall) core.ToolResult {
+func (s *sequentialExecutor) Execute(_ context.Context, call core.ToolCall) core.ToolResult {
 	start := time.Now().UnixNano()
 	time.Sleep(time.Millisecond)
 	finish := time.Now().UnixNano()
@@ -411,7 +412,7 @@ func TestReadOnlyToolsRunConcurrently(t *testing.T) {
 		}
 	}()
 
-	agent.Run([]core.Message{{Role: "user", Content: "go"}})
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "go"}})
 	<-done
 
 	exec.mu.Lock()
@@ -436,7 +437,7 @@ type orderingExecutor struct {
 	callIdx  int
 }
 
-func (o *orderingExecutor) Execute(call core.ToolCall) core.ToolResult {
+func (o *orderingExecutor) Execute(_ context.Context, call core.ToolCall) core.ToolResult {
 	o.mu.Lock()
 	idx := o.callIdx
 	o.callIdx++
@@ -466,7 +467,7 @@ type errLLM struct {
 	err string
 }
 
-func (e *errLLM) Chat(messages []core.Message) (<-chan core.Result, error) {
+func (e *errLLM) Chat(_ context.Context, messages []core.Message) (<-chan core.Result, error) {
 	return nil, errors.New(e.err)
 }
 
@@ -475,7 +476,7 @@ type recordingExecutor struct {
 	calls []core.ToolCall
 }
 
-func (r *recordingExecutor) Execute(call core.ToolCall) core.ToolResult {
+func (r *recordingExecutor) Execute(_ context.Context, call core.ToolCall) core.ToolResult {
 	r.mu.Lock()
 	r.calls = append(r.calls, call)
 	r.mu.Unlock()
@@ -488,10 +489,41 @@ func (r *recordingExecutor) IsReadOnly(name string) bool {
 
 type spyExecutor struct{}
 
-func (s *spyExecutor) Execute(call core.ToolCall) core.ToolResult {
+func (s *spyExecutor) Execute(_ context.Context, call core.ToolCall) core.ToolResult {
 	return core.ToolResult{}
 }
 
 func (s *spyExecutor) IsReadOnly(name string) bool {
 	return true
+}
+
+func TestAgentContextCancellation(t *testing.T) {
+	blockingLLM := &blockingLLM{block: make(chan struct{})}
+	exec := &spyExecutor{}
+	a := New(blockingLLM, exec)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for ev := range a.Events() {
+			if ev.Type == EventError {
+				return
+			}
+		}
+	}()
+
+	go a.Run(ctx, []core.Message{{Role: "user", Content: "Go"}})
+	cancel()
+	<-done
+}
+
+type blockingLLM struct {
+	block chan struct{}
+}
+
+func (b *blockingLLM) Chat(ctx context.Context, messages []core.Message) (<-chan core.Result, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }

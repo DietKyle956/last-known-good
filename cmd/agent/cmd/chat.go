@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/DietKyle956/last-known-good/internal/agent"
@@ -15,7 +16,7 @@ var modelFlag string
 
 type stubExecutor struct{}
 
-func (s *stubExecutor) Execute(call core.ToolCall) core.ToolResult {
+func (s *stubExecutor) Execute(_ context.Context, call core.ToolCall) core.ToolResult {
 	return core.ToolResult{
 		ToolCallID: call.ID,
 		IsError:    true,
@@ -56,35 +57,14 @@ func runTUI(llmClient agent.LLM, messages []core.Message) error {
 	events := make(chan agent.AgentEvent, 128)
 	exec := &stubExecutor{}
 
-	go coordinator(llmClient, exec, &messages, events, submit)
+	sess := agent.NewSession(llmClient, exec)
+	ctx := context.Background()
+	go sess.Run(ctx, messages, submit, events)
 
 	m := tui.New(events, submit)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
-}
-
-func coordinator(llmClient agent.LLM, exec agent.ToolExecutor, messages *[]core.Message, events chan<- agent.AgentEvent, submit <-chan string) {
-	for {
-		a := agent.New(llmClient, exec)
-		go func() {
-			for ev := range a.Events() {
-				events <- ev
-			}
-		}()
-		a.Run(*messages)
-
-		prompt, ok := <-submit
-		if !ok {
-			close(events)
-			return
-		}
-		if prompt == "" {
-			close(events)
-			return
-		}
-		*messages = append(*messages, core.Message{Role: "user", Content: prompt})
-	}
 }
 
 func init() {

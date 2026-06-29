@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -46,12 +47,12 @@ func (t AgentEventType) String() string {
 
 // LLM is the interface for calling a language model.
 type LLM interface {
-	Chat(messages []core.Message) (<-chan core.Result, error)
+	Chat(ctx context.Context, messages []core.Message) (<-chan core.Result, error)
 }
 
 // ToolExecutor executes tool calls and provides metadata.
 type ToolExecutor interface {
-	Execute(call core.ToolCall) core.ToolResult
+	Execute(ctx context.Context, call core.ToolCall) core.ToolResult
 	IsReadOnly(name string) bool
 }
 
@@ -77,43 +78,40 @@ func (a *Agent) Events() <-chan AgentEvent {
 }
 
 // Run starts the agent loop with the given messages.
-func (a *Agent) Run(messages []core.Message) {
+func (a *Agent) Run(ctx context.Context, messages []core.Message) {
 	defer close(a.events)
-	a.loop(messages)
-}
-
-func (a *Agent) loop(messages []core.Message) {
-	results, err := a.llm.Chat(messages)
-	if err != nil {
-		a.events <- AgentEvent{Type: EventError, Error: err}
-		return
-	}
-
-	var toolCalls []core.ToolCall
-
-	for r := range results {
-		if r.Err != nil {
-			a.events <- AgentEvent{Type: EventError, Error: r.Err}
+	for {
+		results, err := a.llm.Chat(ctx, messages)
+		if err != nil {
+			a.events <- AgentEvent{Type: EventError, Error: err}
 			return
 		}
-		if r.IsChunk {
-			a.events <- AgentEvent{Type: EventModelResponseChunk, Content: r.Content}
-		}
-		if len(r.ToolCalls) > 0 {
-			toolCalls = append(toolCalls, r.ToolCalls...)
-		}
-	}
 
-	if len(toolCalls) > 0 {
-		messages = a.executeToolCalls(messages, toolCalls)
-		a.loop(messages)
-		return
-	}
+		var toolCalls []core.ToolCall
 
-	a.events <- AgentEvent{Type: EventTurnComplete}
+		for r := range results {
+			if r.Err != nil {
+				a.events <- AgentEvent{Type: EventError, Error: r.Err}
+				return
+			}
+			if r.IsChunk {
+				a.events <- AgentEvent{Type: EventModelResponseChunk, Content: r.Content}
+			}
+			if len(r.ToolCalls) > 0 {
+				toolCalls = append(toolCalls, r.ToolCalls...)
+			}
+		}
+
+		if len(toolCalls) == 0 {
+			a.events <- AgentEvent{Type: EventTurnComplete}
+			return
+		}
+
+		messages = a.executeToolCalls(ctx, messages, toolCalls)
+	}
 }
 
-func (a *Agent) executeToolCalls(messages []core.Message, calls []core.ToolCall) []core.Message {
+func (a *Agent) executeToolCalls(ctx context.Context, messages []core.Message, calls []core.ToolCall) []core.Message {
 	var ro, rw []core.ToolCall
 	for _, tc := range calls {
 		if a.exec.IsReadOnly(tc.Name) {
@@ -145,7 +143,7 @@ func (a *Agent) executeToolCalls(messages []core.Message, calls []core.ToolCall)
 			tc := tc
 			go func() {
 				defer wg.Done()
-				r := a.exec.Execute(tc)
+				r := a.exec.Execute(ctx, tc)
 				a.events <- AgentEvent{Type: EventToolCallFinished, ToolCall: &tc, ToolResult: &r}
 				results[resultIdx[tc.ID]] = r
 			}()
@@ -155,7 +153,7 @@ func (a *Agent) executeToolCalls(messages []core.Message, calls []core.ToolCall)
 
 	// Execute write tools sequentially (one at a time).
 	for _, tc := range rw {
-		r := a.exec.Execute(tc)
+		r := a.exec.Execute(ctx, tc)
 		a.events <- AgentEvent{Type: EventToolCallFinished, ToolCall: &tc, ToolResult: &r}
 		results[resultIdx[tc.ID]] = r
 	}

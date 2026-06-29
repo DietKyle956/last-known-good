@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -29,7 +30,7 @@ func TestDeepSeekClientNonStreamingReturnsContent(t *testing.T) {
 		BaseURL: srv.URL,
 	})
 
-	results, err := client.Chat([]core.Message{{Role: "user", Content: "Hi"}})
+	results, err := client.Chat(context.Background(), []core.Message{{Role: "user", Content: "Hi"}})
 	if err != nil {
 		t.Fatalf("Chat returned error: %v", err)
 	}
@@ -68,7 +69,7 @@ func TestDeepSeekClientNonStreamingReturnsToolCalls(t *testing.T) {
 		BaseURL: srv.URL,
 	})
 
-	results, err := client.Chat([]core.Message{{Role: "user", Content: "Read file"}})
+	results, err := client.Chat(context.Background(), []core.Message{{Role: "user", Content: "Read file"}})
 	if err != nil {
 		t.Fatalf("Chat returned error: %v", err)
 	}
@@ -110,7 +111,7 @@ func TestDeepSeekClientStreamingYieldsChunks(t *testing.T) {
 		Stream:  true,
 	})
 
-	results, err := client.Chat([]core.Message{{Role: "user", Content: "Say hi"}})
+	results, err := client.Chat(context.Background(), []core.Message{{Role: "user", Content: "Say hi"}})
 	if err != nil {
 		t.Fatalf("Chat returned error: %v", err)
 	}
@@ -155,7 +156,7 @@ func TestDeepSeekClientRequestIncludesThinkingMode(t *testing.T) {
 		ThinkingMode: true,
 	})
 
-	results, _ := client.Chat([]core.Message{{Role: "user", Content: "Hi"}})
+	results, _ := client.Chat(context.Background(), []core.Message{{Role: "user", Content: "Hi"}})
 	for range results {
 	}
 
@@ -189,7 +190,7 @@ func TestDeepSeekClientRequestIncludesReasoningEffort(t *testing.T) {
 		ReasoningEffort: "high",
 	})
 
-	results, _ := client.Chat([]core.Message{{Role: "user", Content: "Hi"}})
+	results, _ := client.Chat(context.Background(), []core.Message{{Role: "user", Content: "Hi"}})
 	for range results {
 	}
 
@@ -219,7 +220,7 @@ func TestDeepSeekClientRequestPayloadShape(t *testing.T) {
 		ThinkingMode: true,
 	})
 
-	results, _ := client.Chat([]core.Message{
+	results, _ := client.Chat(context.Background(), []core.Message{
 		{Role: "system", Content: "You are a helpful assistant."},
 		{Role: "user", Content: "Hello!"},
 	})
@@ -300,7 +301,7 @@ func TestDeepSeekClientMalformedResponseReturnsError(t *testing.T) {
 		BaseURL: srv.URL,
 	})
 
-	results, err := client.Chat([]core.Message{{Role: "user", Content: "Hi"}})
+	results, err := client.Chat(context.Background(), []core.Message{{Role: "user", Content: "Hi"}})
 	if err != nil {
 		return
 	}
@@ -311,4 +312,26 @@ func TestDeepSeekClientMalformedResponseReturnsError(t *testing.T) {
 		}
 	}
 	t.Fatal("expected an error from malformed response, got none")
+}
+
+func TestChatContextCancellation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Wait for context cancellation
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	client := NewDeepSeekClient(DeepSeekConfig{
+		APIKey:  "test-key",
+		Model:   "deepseek-v4-flash",
+		BaseURL: srv.URL,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1)
+	defer cancel()
+
+	_, err := client.Chat(ctx, []core.Message{{Role: "user", Content: "Hi"}})
+	if err == nil {
+		t.Fatal("expected error from cancelled context, got nil")
+	}
 }

@@ -1,17 +1,16 @@
 package sandbox
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os/exec"
 	"strings"
 )
 
-// Sandbox is the interface for sandbox lifecycle management.
-type Sandbox interface {
-	Start(projectDir string, cfg SandboxConfig) (*SessionHandle, error)
-	Exec(h *SessionHandle, command string) (string, error)
-	Stop(h *SessionHandle) error
+// Execer is the interface for executing commands inside a sandbox.
+type Execer interface {
+	Exec(ctx context.Context, command string) (string, error)
 }
 
 // SandboxConfig controls sandbox network policy and resource limits.
@@ -86,21 +85,22 @@ func configureAllowlist(h *SessionHandle, domains []string) error {
 		if ip == "" {
 			return fmt.Errorf("could not resolve %s", domain)
 		}
-		_, err := Exec(h, fmt.Sprintf("echo '%s %s' >> /etc/hosts", ip, domain))
+		_, err := Exec(context.Background(), h, fmt.Sprintf("echo '%s %s' >> /etc/hosts", ip, domain))
 		if err != nil {
 			return fmt.Errorf("add host entry %s: %w", domain, err)
 		}
 	}
-	_, err := Exec(h, "echo 'nameserver 127.0.0.1' > /etc/resolv.conf")
+	_, err := Exec(context.Background(), h, "echo 'nameserver 127.0.0.1' > /etc/resolv.conf")
 	if err != nil {
 		return fmt.Errorf("block dns: %w", err)
 	}
 	return nil
 }
 
-func Exec(h *SessionHandle, command string) (string, error) {
+func Exec(ctx context.Context, h *SessionHandle, command string) (string, error) {
 	args := append([]string{"exec", "-w", "/workspace", h.id, "sh", "-c"}, command)
-	out, err := exec.Command("docker", args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("docker exec: %w", err)
 	}

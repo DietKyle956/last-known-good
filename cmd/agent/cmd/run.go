@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,7 +16,7 @@ import (
 )
 
 var (
-	jsonFlag   bool
+	jsonFlag    bool
 	errNoPrompt = errors.New("prompt is required")
 )
 
@@ -47,9 +48,14 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("starting sandbox: %w", err)
 		}
-		defer sandbox.Stop(handle)
+		defer func() {
+			if err := sandbox.Stop(handle); err != nil {
+				fmt.Fprintf(os.Stderr, "error stopping sandbox: %v\n", err)
+			}
+		}()
 
-		reg := tools.New(handle)
+		shell := sandbox.NewDockerExecer(handle)
+		reg := tools.New(shell)
 		tools.RegisterAll(reg)
 
 		events := make(chan agent.AgentEvent, 128)
@@ -61,8 +67,9 @@ var runCmd = &cobra.Command{
 			close(events)
 		}()
 
+		ctx := context.Background()
 		go func() {
-			a.Run([]core.Message{
+			a.Run(ctx, []core.Message{
 				{Role: "system", Content: "You are a helpful assistant."},
 				{Role: "user", Content: prompt},
 			})

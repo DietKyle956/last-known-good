@@ -3,6 +3,7 @@ package llm
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -60,8 +61,8 @@ func NewDeepSeekClient(config DeepSeekConfig) *DeepSeekClient {
 }
 
 // Chat sends a chat completion request to DeepSeek and returns a result channel.
-func (c *DeepSeekClient) Chat(messages []core.Message) (<-chan core.Result, error) {
-	req, err := c.buildRequest(messages)
+func (c *DeepSeekClient) Chat(ctx context.Context, messages []core.Message) (<-chan core.Result, error) {
+	req, err := c.buildRequest(ctx, messages)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +83,7 @@ func (c *DeepSeekClient) Chat(messages []core.Message) (<-chan core.Result, erro
 	return results, nil
 }
 
-func (c *DeepSeekClient) buildRequest(messages []core.Message) (*http.Request, error) {
+func (c *DeepSeekClient) buildRequest(ctx context.Context, messages []core.Message) (*http.Request, error) {
 	dsReq := DeepSeekRequest{
 		Model:           c.config.Model,
 		Messages:        make([]DeepSeekMessage, 0, len(messages)),
@@ -113,7 +114,7 @@ func (c *DeepSeekClient) buildRequest(messages []core.Message) (*http.Request, e
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.config.BaseURL+"/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.config.BaseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
