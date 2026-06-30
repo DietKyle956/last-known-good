@@ -15,6 +15,7 @@
 # LKG-020: Strict JSON Schema Tool Mode — Complete
 # LKG-023: Last Known Good System Prompt — Complete
 # LKG-021: Per-Tool Timeout & Max-Iteration Guard — Complete
+# LKG-022: Full TUI Redesign — Complete
 
 ## Summary
 
@@ -104,20 +105,9 @@ Docker Compose dev environment, and GitHub Actions CI.
 - **No domain → infra imports**: `session` is not in the domain list, so it can safely import `store` without violating the import constraint
 - **Test coverage**: 5 tests — resume loads messages, non-existent session error, save to session, round-trip equivalence, message type checks
 
-## What was built (LKG-009)
+## What was built (LKG-009 — superseded by LKG-022)
 
-- **`internal/tui`** — Bubble Tea terminal UI with `tea.Model` interface
-- **`tui.New(events, submit)`** — creates a model that subscribes to an `<-chan agent.AgentEvent` and sends user prompts via `chan<- string`
-- **Omarchy palette**: dark navy background (`#00172e`), cream text (`#f6dcac`), teal assistant labels (`#028391`), orange user text (`#faa968`), muted teal tool bodies (`#3f8f8a`), light teal results (`#8cbfb8`), orange-red errors (`#f85525`)
-- **Scrolling viewport**: single conversation viewport using `bubbles/viewport.Model`
-- **Streaming chunks**: model response chunks accumulate into a single assistant message line
-- **Tool call blocks**: inline collapsed blocks with one-line summary; expand to show full detail
-- **Error tool calls**: shown expanded by default with bold orange-red styling
-- **Fixed input bar**: always visible at the bottom, styled with the Omarchy palette
-- **Coordinator loop**: goroutine manages agent lifecycle across turns — creates new agent per turn, forwards events to shared channel, waits for user prompts via submit channel
-- **Chat command**: `agent chat` launches the TUI with a DeepSeek LLM client and stub tool executor
-- **Import constraint**: `tui` is a domain package; does not import any infrastructure packages
-- **Test coverage**: 11 tests — model initialization, event handling, chunk accumulation, channel consumption, prompt submission, tool call lifecycle, and error display
+The original minimal Bubble Tea TUI shell. Completely redesigned in LKG-022 with a full modern chat interface, welcome screen, and brand palette. See LKG-022 section for current implementation.
 
 ## What was built (LKG-010)
 
@@ -314,7 +304,7 @@ internal/
   tools/            tool registry + 7 built-in sandbox tools (complete)
   singleshot/       single-shot CLI renderer (text + JSON) (complete)
   store/            SQLite session persistence + SaveMessages/Resume (complete)
-  tui/              Bubble Tea terminal UI (complete)
+  tui/              Bubble Tea terminal UI with full redesign (complete)
 ```
 
 ### LKG-013 slices
@@ -501,3 +491,32 @@ internal/
 | 3 | Per-tool timeout: `timeoutContext` helper wrapping `context.WithTimeout` |
 | 4 | Tests: max iteration stops with error, unlimited at zero |
 | 5 | Tests: timeout returns error result, no-op at zero |
+
+## What was built (LKG-022)
+
+- **`internal/tui/styles.go`** — Omarchy retro-82 palette constants with 10 named colors (`#00172e` background, `#f6dcac` text, `#faa968` accent, `#3f8f8a` teal, `#8cbfb8` cyan, `#a7c9c6` muted, `#028391` green, `#e97b3c` yellow, `#f85525` red, `#134e5a` status bg) and 20+ reusable lipgloss styles for all UI components
+- **`internal/tui/tui.go`** — Main Bubble Tea model with 4-zone layout (header, viewport, status bar, input), welcome screen with LKG ASCII art brand that transitions to full chat on first message or event, model badge in header, `SetModelName`/`SetSandboxState`/`SetTokenCount` public API for status bar updates
+- **`internal/tui/input.go`** — Multi-line `bubbles/textarea` input with Omarchy-styled prompt (`>` in `#faa968`), placeholder text, and paste support
+- **`internal/tui/messages.go`** — Role-based message bubbles with lipgloss containers: user messages with `#faa968` border, assistant messages with `#3f8f8a` border; inline markdown rendering (bold/italic) and code block detection with chroma syntax highlighting (`formatters.TTY16m`, `monokai` style)
+- **`internal/tui/tools.go`** — Tool call card state tracking with name, arguments, result, error flag, and collapsed/expanded toggle
+- **`internal/tui/status.go`** — Status bar with `#134e5a` background showing model name (`💬`), token count (`⚡`), and sandbox state (`🐳`), separated by `│` dividers
+- **`internal/tui/help.go`** — Keyboard shortcut overlay using `bubbles/help` with keybinding definitions for send (`alt+enter`), quit (`ctrl+c`), help toggle (`ctrl+h`), collapse toggle (`ctrl+t`); styled teal/muted key colors
+- **`internal/tui/tui_test.go`** — 24 tests covering: model lifecycle, event handling, chunk accumulation, channel consumption, prompt submission, tool call lifecycle, error display, welcome screen rendering, welcome-to-chat transition (on send and on chunk), status bar rendering with live data, user/assistant bubble rendering, markdown code block highlighting, text wrapping, and channel close
+- **Welcome screen**: when `Model.started` is `false`, `View()` renders centered LKG block ASCII art in `#faa968`, subtitle "Last Known Good — the open source AI coding agent" in `#a7c9c6`, and the textarea input at approximately 1/3 screen height; `sendMessage()` and `handleChunk()` both set `started = true` to transition to full chat layout
+- **No import constraint violations**: `tui` is a domain package and does not import any infrastructure packages
+- **New dependencies**: `github.com/alecthomas/chroma/v2` for syntax highlighting, `github.com/charmbracelet/bubbles/textarea`, `bubbles/spinner`, `bubbles/help`
+
+### LKG-022 slices
+
+| # | Slice | What |
+|---|-------|------|
+| 1 | Brand palette & layout framework | `styles.go` with palette constants, resize-aware 4-zone layout (header, viewport, status bar, input) |
+| 2 | Enhanced input area | `bubbles/textarea` — multi-line, paste, Omarchy-styled prompt and text |
+| 3 | Rich message bubbles | Lipgloss containers with role-colored borders (user=#faa968, assistant=#3f8f8a), padding, labels |
+| 4 | Markdown + syntax highlighting | Chroma-based code block highlighting with TTY16m formatter and monokai style |
+| 5 | Spinner & animated indicators | `bubbles/spinner` (dot style) in #8cbfb8 replacing static "…" |
+| 6 | Tool call cards | Collapsible state tracking with success/error indicators |
+| 7 | Status bar with live data | #134e5a background — model, tokens, sandbox state |
+| 8 | Help overlay | `bubbles/help` with styled key bindings |
+| 9 | Welcome screen | ASCII art LKG brand + centered input, transitions on first message/event |
+| 10 | Polish + tests | 24 tests covering all components and welcome state transitions |
