@@ -33,8 +33,8 @@ type Model struct {
 	streaming bool
 	thinking  bool
 
-	toolCards      []toolCallCard
-	cardsExpanded  bool
+	toolCards     []toolCallCard
+	cardsExpanded bool
 }
 
 func New(events <-chan agent.AgentEvent, submit chan<- string) *Model {
@@ -43,20 +43,20 @@ func New(events <-chan agent.AgentEvent, submit chan<- string) *Model {
 	s.Spinner = spinner.Dot
 
 	return &Model{
-		events:   events,
-		submit:   submit,
-		spinner:  s,
-		help:     newHelpModel(),
+		events:  events,
+		submit:  submit,
+		spinner: s,
+		help:    newHelpModel(),
 		status: statusData{
 			modelName:    "",
 			tokenCount:   0,
 			sandboxState: "",
 		},
-		bubbles:       []messageBubble{},
-		toolCards:     []toolCallCard{},
-		showHelp:      false,
-		thinking:      false,
-		input:         "",
+		bubbles:   []messageBubble{},
+		toolCards: []toolCallCard{},
+		showHelp:  false,
+		thinking:  false,
+		input:     "",
 	}
 }
 

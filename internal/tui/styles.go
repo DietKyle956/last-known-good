@@ -113,9 +113,9 @@ var (
 				Foreground(lipgloss.Color(ColorMuted))
 
 	WelcomeInputStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(ColorPrimaryText)).
-			Width(60).
-			Align(lipgloss.Center)
+				Foreground(lipgloss.Color(ColorPrimaryText)).
+				Width(60).
+				Align(lipgloss.Center)
 
 	InputBarStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color(ColorBackground)).
