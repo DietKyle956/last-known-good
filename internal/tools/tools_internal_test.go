@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -298,5 +299,78 @@ func TestEscapeSed_combinationString(t *testing.T) {
 	expected := `\\\/\&`
 	if result != expected {
 		t.Fatalf("expected %q, got %q", expected, result)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ToolDefinitions order determinism
+// ---------------------------------------------------------------------------
+
+func TestToolDefinitionsAreSortedByName(t *testing.T) {
+	reg := New(nil)
+	// Register tools in reverse alphabetical order
+	reg.Register(Tool{
+		Name:        "z_tool",
+		Description: "Last tool",
+		Parameters:  map[string]any{"type": "object"},
+	})
+	reg.Register(Tool{
+		Name:        "a_tool",
+		Description: "First tool",
+		Parameters:  map[string]any{"type": "object"},
+	})
+	reg.Register(Tool{
+		Name:        "m_tool",
+		Description: "Middle tool",
+		Parameters:  map[string]any{"type": "object"},
+	})
+
+	defs := reg.ToolDefinitions()
+	if len(defs) != 3 {
+		t.Fatalf("expected 3 definitions, got %d", len(defs))
+	}
+	if defs[0].Name != "a_tool" {
+		t.Errorf("expected first tool 'a_tool', got %q", defs[0].Name)
+	}
+	if defs[1].Name != "m_tool" {
+		t.Errorf("expected second tool 'm_tool', got %q", defs[1].Name)
+	}
+	if defs[2].Name != "z_tool" {
+		t.Errorf("expected third tool 'z_tool', got %q", defs[2].Name)
+	}
+}
+
+func TestToolDefinitionsAreByteIdenticalAcrossCalls(t *testing.T) {
+	reg := New(nil)
+	reg.Register(Tool{
+		Name:        "read_file",
+		Description: "Read a file",
+		Parameters:  map[string]any{"type": "object"},
+	})
+	reg.Register(Tool{
+		Name:        "write_file",
+		Description: "Write a file",
+		Parameters:  map[string]any{"type": "object"},
+	})
+
+	first := reg.ToolDefinitions()
+	second := reg.ToolDefinitions()
+
+	buildPayload := func(defs []ToolDefinition) string {
+		var b strings.Builder
+		for _, d := range defs {
+			b.WriteString("- **" + d.Name + "**: " + d.Description + "\n")
+		}
+		return b.String()
+	}
+
+	p1 := buildPayload(first)
+	p2 := buildPayload(second)
+
+	if len(p1) == 0 {
+		t.Fatal("expected non-empty payload")
+	}
+	if p1 != p2 {
+		t.Fatal("tool definitions payload differs between consecutive calls")
 	}
 }

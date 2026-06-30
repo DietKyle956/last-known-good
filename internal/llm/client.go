@@ -33,6 +33,13 @@ type DeepSeekConfig struct {
 type DeepSeekClient struct {
 	config DeepSeekConfig
 	http   *http.Client
+	tools  []DeepSeekToolDef
+}
+
+// SetTools configures the tool definitions to include in every request.
+// The tools slice is stored as-is; callers should ensure deterministic order.
+func (c *DeepSeekClient) SetTools(tools []DeepSeekToolDef) {
+	c.tools = tools
 }
 
 func APIKeyForModel(model string) string {
@@ -93,6 +100,10 @@ func (c *DeepSeekClient) buildRequest(ctx context.Context, messages []core.Messa
 
 	if c.config.ThinkingMode {
 		dsReq.Thinking = &ThinkingConfig{Type: "enabled"}
+	}
+
+	if len(c.tools) > 0 {
+		dsReq.Tools = c.tools
 	}
 
 	for _, m := range messages {

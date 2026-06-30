@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -333,5 +334,56 @@ func TestChatContextCancellation(t *testing.T) {
 	_, err := client.Chat(ctx, []core.Message{{Role: "user", Content: "Hi"}})
 	if err == nil {
 		t.Fatal("expected error from cancelled context, got nil")
+	}
+}
+
+func TestRequestPayloadIsByteIdenticalAcrossCalls(t *testing.T) {
+	var bodies [][]byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewDeepSeekClient(DeepSeekConfig{
+		APIKey:  "test-key",
+		Model:   "deepseek-v4-flash",
+		BaseURL: srv.URL,
+	})
+
+	client.SetTools([]DeepSeekToolDef{
+		{
+			Type: "function",
+			Function: DeepSeekFunction{
+				Name:        "read_file",
+				Description: "Read a file from the workspace",
+				Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`),
+			},
+		},
+	})
+
+	msgs := []core.Message{
+		{Role: "system", Content: "You are a helpful assistant."},
+		{Role: "user", Content: "Hello!"},
+	}
+
+	for i := 0; i < 2; i++ {
+		results, err := client.Chat(context.Background(), msgs)
+		if err != nil {
+			t.Fatalf("call %d: Chat returned error: %v", i, err)
+		}
+		for range results {
+		}
+	}
+
+	if len(bodies) != 2 {
+		t.Fatalf("expected 2 captured bodies, got %d", len(bodies))
+	}
+
+	// Compare full request bodies byte-for-byte.
+	if !bytes.Equal(bodies[0], bodies[1]) {
+		t.Fatal("full request body differs between consecutive calls")
 	}
 }

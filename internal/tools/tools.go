@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/DietKyle956/last-known-good/internal/agent"
@@ -50,6 +51,9 @@ func (r *Registry) ToolDefinitions() []ToolDefinition {
 			Parameters:  t.Parameters,
 		})
 	}
+	sort.Slice(defs, func(i, j int) bool {
+		return defs[i].Name < defs[j].Name
+	})
 	return defs
 }
 

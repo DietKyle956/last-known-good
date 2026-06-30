@@ -1,5 +1,7 @@
 package llm
 
+import "encoding/json"
+
 // DeepSeekRequest is the request body for the chat completions endpoint.
 type DeepSeekRequest struct {
 	Model           string            `json:"model"`
@@ -7,6 +9,20 @@ type DeepSeekRequest struct {
 	Stream          bool              `json:"stream"`
 	Thinking        *ThinkingConfig   `json:"thinking,omitempty"`
 	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
+	Tools           []DeepSeekToolDef `json:"tools,omitempty"`
+}
+
+// DeepSeekToolDef is a tool definition in the OpenAI-compatible format.
+type DeepSeekToolDef struct {
+	Type     string           `json:"type"`
+	Function DeepSeekFunction `json:"function"`
+}
+
+// DeepSeekFunction is the function details inside a tool definition.
+type DeepSeekFunction struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
 }
 
 // ThinkingConfig controls thinking mode on a request.
