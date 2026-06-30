@@ -233,7 +233,6 @@ func TestAutoFormatHookRegisteredViaSystem(t *testing.T) {
 	}
 }
 
-
 func TestDefaultFormatters(t *testing.T) {
 	fmts := DefaultFormatters()
 	if fmts == nil {
