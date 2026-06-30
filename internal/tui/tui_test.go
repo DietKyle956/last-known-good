@@ -408,10 +408,10 @@ func TestWelcomeScreenRenders(t *testing.T) {
 	}
 
 	v := m.View()
-	if !contains(v, "LKG") {
-		t.Fatalf("expected LKG in welcome screen, got %q", v)
-	}
 	if !contains(v, "Last Known Good") {
+		t.Fatalf("expected 'Last Known Good' in welcome screen, got %q", v)
+	}
+	if !contains(v, "The open source AI coding agent") {
 		t.Fatalf("expected subtitle in welcome screen, got %q", v)
 	}
 }
