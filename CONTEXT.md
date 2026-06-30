@@ -366,3 +366,15 @@ internal/
 - **Blocked commands return structured error**: agent receives `ToolResult{IsError: true, Content: "blocked: command matches dangerous pattern %q"}` instead of crashing; the reason flows back to the model as the tool response
 - **Wired into `agent run`**: `run.go` creates a `hooks.System`, registers `DangerousCommandHook`, and attaches it to the agent
 - **Test coverage**: 9 dangerous hook unit tests (block/no-block, safe command, non-bash, custom patterns, nil/invalid edge cases) + 2 agent integration tests (blocked produces error result, safe passes through)
+
+## What was built (LKG-015)
+
+- **`AutoFormatHook`** — `AfterToolCall` hook in `internal/hooks/autoformat.go` that runs a language formatter inside the sandbox after a file write to a recognized source file type
+- **Configurable formatters**: `NewAutoFormatHook(execer, formatters, onFailure)` takes a `map[string]string` of extension → formatter command template; pass `nil` to use `DefaultFormatters()` (`.go` → `gofmt -w %s`)
+- **Recognized extension triggers formatter**: when a `write_file` tool call writes a file whose extension matches a configured formatter, the formatter runs inside the sandbox via the execer
+- **Unrecognized extension is skipped**: files with extensions not in the formatters map (e.g., `.txt`, `.md`) do not invoke any formatter
+- **Non-write tool calls pass through**: `bash`, `read_file`, etc. are not inspected
+- **Format failure is non-fatal**: a formatting error does not crash or halt the agent loop; the hook returns nil (AfterToolCall blocks are ignored)
+- **Failure callback**: `onFailure(path, command, err)` is called when a formatter fails, allowing callers to record the event (e.g., via `store.SaveHookEvent`)
+- **Wired into `agent run`**: `run.go` creates the `AutoFormatHook` with the sandbox execer and registers it as an `AfterToolCall` hook
+- **Test coverage**: 13 unit tests — formatter runs for .go, skipped for unrecognized extensions, skipped for non-write_file tools, nil/invalid JSON edge cases, failure callback invoked, custom formatters work, default formatters, Formatters() returns a copy
