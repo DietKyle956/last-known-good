@@ -12,7 +12,7 @@ import (
 type HookType int
 
 const (
-	SessionStarted   HookType = iota + 1
+	SessionStarted HookType = iota + 1
 	SessionEnded
 	BeforeModelCall
 	AfterModelCall
