@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/DietKyle956/last-known-good/internal/core"
+	"github.com/DietKyle956/last-known-good/internal/router"
 )
 
 func TestSessionSingleTurn(t *testing.T) {
@@ -90,5 +91,51 @@ func TestSessionContextCancellation(t *testing.T) {
 	cancel()
 
 	for range events {
+	}
+}
+
+// recordingLLM wraps an LLM and records which model it was configured with.
+type recordingLLM struct {
+	LLM
+	model    string
+	thinking bool
+}
+
+func TestSessionWithRouterSelectsLLMPerTurn(t *testing.T) {
+	exec := &spyExecutor{}
+
+	var decs []router.RouteDecision
+	routeCount := 0
+	r := &router.HeuristicRouter{
+		MultiFileThreshold: 2,
+		ComplexitySignals:  router.DefaultSignals(),
+	}
+
+	llmFactory := func(dec router.RouteDecision) LLM {
+		decs = append(decs, dec)
+		routeCount++
+		return &noToolLLM{response: "Hello"}
+	}
+
+	sess := NewSessionWithRouter(exec, r, llmFactory)
+
+	submit := make(chan string, 2)
+	events := make(chan AgentEvent, 128)
+	ctx := context.Background()
+
+	submit <- "First turn"
+	close(submit)
+
+	go sess.Run(ctx, []core.Message{{Role: "user", Content: "Hi"}}, submit, events)
+
+	for range events {
+	}
+
+	if routeCount == 0 {
+		t.Fatal("expected at least one routing decision")
+	}
+	// First turn: no prior turn info, single initial message — should be Flash
+	if decs[0].Model != router.DeepSeekV4Flash {
+		t.Errorf("expected first turn to use Flash, got %q", decs[0].Model)
 	}
 }
