@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/DietKyle956/last-known-good/internal/agent"
@@ -15,6 +16,7 @@ import (
 	"github.com/DietKyle956/last-known-good/internal/logger"
 	"github.com/DietKyle956/last-known-good/internal/sandbox"
 	"github.com/DietKyle956/last-known-good/internal/singleshot"
+	"github.com/DietKyle956/last-known-good/internal/skills"
 	"github.com/DietKyle956/last-known-good/internal/tools"
 	"github.com/spf13/cobra"
 )
@@ -101,10 +103,32 @@ var runCmd = &cobra.Command{
 			close(events)
 		}()
 
+		loader := skills.NewLoader("skills")
+		if err := loader.Load(); err != nil {
+			return fmt.Errorf("load skills: %w", err)
+		}
+		var skillSummaries string
+		if ss := loader.Summaries(); len(ss) > 0 {
+			var b strings.Builder
+			for _, s := range ss {
+				b.WriteString("- **" + s.Name + "**: " + s.Description + "\n")
+			}
+			skillSummaries = b.String()
+		}
+
+		var toolDefs string
+		if defs := reg.ToolDefinitions(); len(defs) > 0 {
+			var b strings.Builder
+			for _, d := range defs {
+				b.WriteString("- **" + d.Name + "**: " + d.Description + "\n")
+			}
+			toolDefs = b.String()
+		}
+
 		ctx := context.Background()
 		go func() {
 			a.Run(ctx, []core.Message{
-				{Role: "system", Content: "You are a helpful assistant."},
+				{Role: "system", Content: core.BuildSystemPrompt(skillSummaries, toolDefs)},
 				{Role: "user", Content: prompt},
 			})
 		}()

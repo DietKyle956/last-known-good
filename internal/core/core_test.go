@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -396,6 +397,44 @@ func TestZeroValues(t *testing.T) {
 	}
 	if r.Err != nil {
 		t.Errorf("expected nil Err, got %v", r.Err)
+	}
+}
+
+func TestBuildSystemPromptReturnsPersona(t *testing.T) {
+	result := BuildSystemPrompt("", "")
+	if !strings.Contains(result, "Last Known Good") {
+		t.Error("expected persona to contain 'Last Known Good'")
+	}
+	if !strings.Contains(result, "direct deadpan, sarcastic and witty") {
+		t.Error("expected persona to contain 'direct deadpan, sarcastic and witty'")
+	}
+	if strings.Contains(result, "## Available Skills") {
+		t.Error("expected no skills section when summaries are empty")
+	}
+	if strings.Contains(result, "## Available Tools") {
+		t.Error("expected no tools section when descriptions are empty")
+	}
+}
+
+func TestBuildSystemPromptIncludesSkills(t *testing.T) {
+	skills := "- **code-review**: Review pull requests for common issues"
+	result := BuildSystemPrompt(skills, "")
+	if !strings.Contains(result, "## Available Skills") {
+		t.Error("expected skills section heading")
+	}
+	if !strings.Contains(result, "code-review") {
+		t.Error("expected skill summary in output")
+	}
+}
+
+func TestBuildSystemPromptIncludesTools(t *testing.T) {
+	tools := "- **read_file**: Read a file from the workspace"
+	result := BuildSystemPrompt("", tools)
+	if !strings.Contains(result, "## Available Tools") {
+		t.Error("expected tools section heading")
+	}
+	if !strings.Contains(result, "read_file") {
+		t.Error("expected tool description in output")
 	}
 }
 

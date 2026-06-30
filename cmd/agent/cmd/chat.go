@@ -3,10 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/DietKyle956/last-known-good/internal/agent"
 	"github.com/DietKyle956/last-known-good/internal/core"
 	"github.com/DietKyle956/last-known-good/internal/llm"
+	"github.com/DietKyle956/last-known-good/internal/skills"
 	"github.com/DietKyle956/last-known-good/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -44,8 +46,21 @@ var chatCmd = &cobra.Command{
 			Stream: true,
 		})
 
+		loader := skills.NewLoader("skills")
+		if err := loader.Load(); err != nil {
+			return fmt.Errorf("load skills: %w", err)
+		}
+		var skillSummaries string
+		if ss := loader.Summaries(); len(ss) > 0 {
+			var b strings.Builder
+			for _, s := range ss {
+				b.WriteString("- **" + s.Name + "**: " + s.Description + "\n")
+			}
+			skillSummaries = b.String()
+		}
+
 		messages := []core.Message{
-			{Role: "system", Content: "You are a helpful assistant."},
+			{Role: "system", Content: core.BuildSystemPrompt(skillSummaries, "")},
 		}
 
 		return runTUI(client, messages)
