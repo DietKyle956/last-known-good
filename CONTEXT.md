@@ -7,6 +7,7 @@
 # LKG-008: Session Resume — Complete
 # LKG-009: Full TUI Shell — Complete
 # LKG-010: Sandbox Network Policy & Resource Limits — Complete
+# LKG-013: Hooks Framework — Complete
 
 ## Summary
 
@@ -125,14 +126,15 @@ Docker Compose dev environment, and GitHub Actions CI.
 ```
 cmd/agent/          main.go + cmd/ (root, chat, run)
 internal/
-  core/             shared domain types (Message, ToolCall, ToolResult, Result)
-  agent/            core agent loop + event types (complete)
+  core/             shared domain types + AgentEvent types (complete)
+  agent/            core agent loop + event types + Session (complete)
+  hooks/            typed hooks framework (complete)
   llm/              DeepSeek API client (complete)
-  sandbox/          Docker sandbox lifecycle (complete)
+  router/           pluggable model router (complete)
+  sandbox/          Docker sandbox lifecycle + Execer interface (complete)
   tools/            tool registry + 7 built-in sandbox tools (complete)
   singleshot/       single-shot CLI renderer (text + JSON) (complete)
-  store/            SQLite session persistence (complete)
-  session/          session resume & lifecycle management (complete)
+  store/            SQLite session persistence + SaveMessages/Resume (complete)
   tui/              Bubble Tea terminal UI (complete)
 ```
 
@@ -275,8 +277,9 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 ```
 cmd/agent/          main.go + cmd/ (root, chat, run)
 internal/
-  core/             shared domain types (Message, ToolCall, ToolResult, Result)
+  core/             shared domain types + AgentEvent types (complete)
   agent/            core agent loop + event types + Session (complete)
+  hooks/            typed hooks framework (complete)
   llm/              DeepSeek API client (complete)
   router/           pluggable model router (complete)
   sandbox/          Docker sandbox lifecycle + Execer interface (complete)
@@ -304,3 +307,48 @@ internal/
 - **`Registry`** stores a `sandbox.Execer` instead of `*SessionHandle`
 - **Mock-based tests**: `mockExecer` enables tool tests without Docker (2 new unit tests)
 - **`dockerExecer` adapter**: `NewDockerExecer(h)` wraps `*SessionHandle` for production use
+
+## What was built (LKG-013)
+
+- **`internal/hooks`** — typed hooks system that fires around session lifecycle, model calls, and tool calls
+- **`HookType`** enum with six types: `SessionStarted`, `SessionEnded`, `BeforeModelCall`, `AfterModelCall`, `BeforeToolCall`, `AfterToolCall`
+- **`HookFunc`** callback type — non-nil `*HookResult{Block: true}` prevents tool execution (BeforeToolCall only)
+- **`System`** — registry of `map[HookType][]HookFunc` with `Register` and `Notify`; synchronous dispatch returns block flag
+- **`New(events)`** — subscribes to `<-chan core.AgentEvent` and dispatches channel events as hook events (same channel as TUI/rendered)
+- **`Session.SetHooks`** / **`Agent.SetHooks`** — attaches hooks system; Session emits `SessionStarted`/`SessionEnded`, Agent emits `BeforeModelCall`/`AfterModelCall`/`BeforeToolCall`/`AfterToolCall`
+- **Blocking**: `BeforeToolCall` hooks checked before tool execution; blocked tools never reach `Execute` and get "blocked by hook" error result
+- **AfterToolCall ignores block**: block return value from `AfterToolCall` hooks is silently ignored — the tool already ran
+- **Registration order**: multiple hooks for the same event fire in registration order
+- **No dynamic loading**: all hooks registered as compiled Go code at startup
+- **`AgentEvent` types** moved from `internal/agent` to `internal/core` to break import cycle (`hooks`→`core`←`agent`)
+- **Type aliases** in `agent` package (`AgentEvent`, `AgentEventType`, event constants) preserve backward compatibility
+- **Test coverage**: 10 hooks unit tests + 3 agent integration tests covering all acceptance criteria
+
+## Package structure
+
+```
+cmd/agent/          main.go + cmd/ (root, chat, run)
+internal/
+  core/             shared domain types + AgentEvent types
+  agent/            core agent loop + event types + Session (complete)
+  hooks/            typed hooks framework (complete)
+  llm/              DeepSeek API client (complete)
+  router/           pluggable model router (complete)
+  sandbox/          Docker sandbox lifecycle + Execer interface (complete)
+  tools/            tool registry + 7 built-in sandbox tools (complete)
+  singleshot/       single-shot CLI renderer (text + JSON) (complete)
+  store/            SQLite session persistence + SaveMessages/Resume (complete)
+  tui/              Bubble Tea terminal UI (complete)
+```
+
+### LKG-013 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Tracer bullet: package compiles, Register+Notify for SessionStarted |
+| 2 | SessionEnded hook fires |
+| 3 | BeforeModelCall / AfterModelCall hooks fire |
+| 4 | BeforeToolCall can block, blocked tool not executed |
+| 5 | AfterToolCall cannot block, multiple hooks fire in registration order |
+| 6 | Agent integration: Session/Agent lifecycle calls |
+| 7 | Channel subscription from AgentEvent channel (criterion 12) |
