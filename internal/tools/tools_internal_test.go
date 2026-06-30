@@ -340,6 +340,111 @@ func TestToolDefinitionsAreSortedByName(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// SchemaSupportsStrict
+// ---------------------------------------------------------------------------
+
+func TestSchemaSupportsStrict_objectWithStringProperty(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name": map[string]any{"type": "string"},
+		},
+		"required": []any{"name"},
+	}
+	if !SchemaSupportsStrict(schema) {
+		t.Fatal("expected simple object schema to support strict mode")
+	}
+
+	if !SchemaSupportsStrict(map[string]any{
+		"type": "object",
+		"properties": map[string]any{},
+	}) {
+		t.Fatal("expected empty properties object to support strict mode")
+	}
+}
+
+func TestSchemaSupportsStrict_rejectsEnum(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"color": map[string]any{"type": "string", "enum": []any{"red", "blue"}},
+		},
+	}
+	if SchemaSupportsStrict(schema) {
+		t.Fatal("expected schema with enum to NOT support strict mode")
+	}
+}
+
+func TestSchemaSupportsStrict_rejectsAnyOf(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"value": map[string]any{"anyOf": []any{map[string]any{"type": "string"}, map[string]any{"type": "number"}}},
+		},
+	}
+	if SchemaSupportsStrict(schema) {
+		t.Fatal("expected schema with anyOf to NOT support strict mode")
+	}
+}
+
+func TestSchemaSupportsStrict_rejectsNullable(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name": map[string]any{"type": "string", "nullable": true},
+		},
+	}
+	if SchemaSupportsStrict(schema) {
+		t.Fatal("expected schema with nullable to NOT support strict mode")
+	}
+}
+
+func TestSchemaSupportsStrict_rejectsAdditionalProperties(t *testing.T) {
+	schema := map[string]any{
+		"type":                 "object",
+		"properties":           map[string]any{},
+		"additionalProperties": true,
+	}
+	if SchemaSupportsStrict(schema) {
+		t.Fatal("expected schema with additionalProperties=true to NOT support strict mode")
+	}
+}
+
+func TestSchemaSupportsStrict_allPropertyTypes(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":    map[string]any{"type": "string"},
+			"count":   map[string]any{"type": "number"},
+			"active":  map[string]any{"type": "boolean"},
+			"tags":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"address": map[string]any{"type": "object", "properties": map[string]any{"street": map[string]any{"type": "string"}}},
+		},
+	}
+	if !SchemaSupportsStrict(schema) {
+		t.Fatal("expected schema with all supported strict types to support strict mode")
+	}
+}
+
+func TestSchemaSupportsStrict_nonObjectRoot(t *testing.T) {
+	if SchemaSupportsStrict(map[string]any{"type": "string"}) {
+		t.Fatal("expected non-object root to NOT support strict mode")
+	}
+}
+
+func TestSchemaSupportsStrict_rejectsRef(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"user": map[string]any{"$ref": "#/definitions/User"},
+		},
+	}
+	if SchemaSupportsStrict(schema) {
+		t.Fatal("expected schema with $ref to NOT support strict mode")
+	}
+}
+
 func TestToolDefinitionsAreByteIdenticalAcrossCalls(t *testing.T) {
 	reg := New(nil)
 	reg.Register(Tool{

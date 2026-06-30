@@ -23,6 +23,7 @@ type DeepSeekFunction struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	Parameters  json.RawMessage `json:"parameters,omitempty"`
+	Strict      bool            `json:"strict,omitempty"`
 }
 
 // ThinkingConfig controls thinking mode on a request.

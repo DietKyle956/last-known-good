@@ -151,12 +151,14 @@ func toDeepSeekTools(defs []tools.ToolDefinition) []llm.DeepSeekToolDef {
 				params = json.RawMessage(b)
 			}
 		}
+		strict := tools.SchemaSupportsStrict(d.Parameters)
 		out = append(out, llm.DeepSeekToolDef{
 			Type: "function",
 			Function: llm.DeepSeekFunction{
 				Name:        d.Name,
 				Description: d.Description,
 				Parameters:  params,
+				Strict:      strict,
 			},
 		})
 	}
