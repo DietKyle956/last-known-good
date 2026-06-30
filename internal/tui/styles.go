@@ -105,17 +105,16 @@ var (
 				Background(lipgloss.Color(ColorBackground)).
 				Align(lipgloss.Center)
 
-	WelcomeTitleStyle = lipgloss.NewStyle().
+	WelcomeLogoStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(ColorAccent)).
-				Bold(true)
+				Background(lipgloss.Color(ColorBackground)).
+				Bold(true).
+				Padding(1, 2).
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color(ColorAccent))
 
 	WelcomeSubtitleStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(ColorMuted))
-
-	WelcomeInputStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(ColorPrimaryText)).
-				Width(60).
-				Align(lipgloss.Center)
 
 	InputBarStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color(ColorBackground)).

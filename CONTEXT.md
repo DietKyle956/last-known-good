@@ -16,6 +16,7 @@
 # LKG-023: Last Known Good System Prompt — Complete
 # LKG-021: Per-Tool Timeout & Max-Iteration Guard — Complete
 # LKG-022: Full TUI Redesign — Complete
+# LKG-024: Markdown-Defined Subagent Roster & Loader — Complete
 
 ## Summary
 
@@ -294,12 +295,13 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 ```
 cmd/agent/          main.go + cmd/ (root, chat, run, sessions, logs)
 internal/
+  agents/           subagent roster with markdown-defined agents (complete)
   core/             shared domain types + AgentEvent types
   agent/            core agent loop + event types + Session (complete)
   hooks/            typed hooks framework (complete)
   llm/              DeepSeek API client (complete)
   router/           pluggable model router (complete)
-   sandbox/          Docker sandbox lifecycle + Execer interface (complete)
+  sandbox/          Docker sandbox lifecycle + Execer interface (complete)
   skills/           file-based skills system with lazy loading (complete)
   tools/            tool registry + 7 built-in sandbox tools (complete)
   singleshot/       single-shot CLI renderer (text + JSON) (complete)
@@ -520,3 +522,35 @@ internal/
 | 8 | Help overlay | `bubbles/help` with styled key bindings |
 | 9 | Welcome screen | ASCII art LKG brand + centered input, transitions on first message/event |
 | 10 | Polish + tests | 24 tests covering all components and welcome state transitions |
+
+## What was built (LKG-024)
+
+- **`internal/agents`** package — subagent definition format and loader, modeled on OpenCode's approach
+- **`Agent`** struct with `Name`, `ShortName`, `Role`, `AllowedTools`, `ModelPreference`, `SystemPrompt`
+- **`parseAgentFile`** — parses markdown files with YAML-style `---` delimited frontmatter: `full_name`, `short_name`, `role` (required), `allowed_tools` (optional comma-separated names), `model_preference` (optional: `deepseek-v4-pro` or `deepseek-v4-flash`); the markdown body becomes the agent's system prompt
+- **`Loader`** — discovers `.md` files from a configurable directory at startup; no agent is registered by being referenced in Go code
+- **Empty body fallback**: an agent file with valid frontmatter but an empty body loads successfully with a minimal default persona (`"You are a helpful software development assistant."`)
+- **Duplicate detection**: two agent files with the same `short_name` produce a clear startup error rather than silently overwriting one another
+- **Malformed files**: agent files with missing or malformed frontmatter are skipped without crashing the loader
+- **`List()`** — returns all loaded agents with their full name, short name, and role description
+- **`Get(shortName)`** — looks up a single agent by short name and returns its system prompt, allowed tools, and model preference; unknown short names return an error
+- **`ValidateTools(validTools)`** — validates that each agent's `allowed_tools` list references only tools that exist in the tool registry; agents with no tool restriction pass validation automatically
+- **`tools.Registry.Restrict(allowed)`** — filters the tool registry to only include tools whose names match the allowed list
+- **`agent run --agent / -a`** flag — loads the specified agent's system prompt, restricts the tool registry if `allowed_tools` is set, and selects the model if `model_preference` is set
+- **11 default agent markdown files** in `agents/` directory: Conductor, Engineer-Initial, Engineer-Replan, Validator, Infrastructure, Test Writer, Test Reviewer, Coder, Auditor, Scribe, Historian
+- **17 tests** covering frontmatter parsing, loader discovery, duplicate detection, registry lookup, non-markdown file skipping, malformed file skipping, allowed-tools validation, and default roster loading
+
+### LKG-024 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Parse valid frontmatter with `full_name`, `short_name`, `role`, and body |
+| 2 | Parse optional fields (`allowed_tools`, `model_preference`) |
+| 3 | Missing/malformed frontmatter returns nil (skipped) |
+| 4 | Empty body falls back to default persona |
+| 5 | Duplicate short names produce startup error |
+| 6 | Loader discovers `.md` files from directory |
+| 7 | Registry `List()` and `Get()` |
+| 8 | Unknown short name returns error |
+| 9 | Allowed-tools validation against tool registry |
+| 10 | 11 default agent files load successfully |

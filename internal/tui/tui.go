@@ -215,7 +215,7 @@ func (m *Model) View() string {
 }
 
 func (m *Model) renderHeader() string {
-	title := HeaderStyle.Render("LKG")
+	title := HeaderStyle.Render("Last Known Good")
 	modelInfo := ""
 	if m.status.modelName != "" {
 		modelInfo = HeaderBarStyle.Render(" \u00b7 " + m.status.modelName)
@@ -232,21 +232,31 @@ func (m *Model) renderWelcome() string {
 
 	spacing := strings.Repeat("\n", topPad-1)
 
-	title := WelcomeTitleStyle.Render("LKG")
-	subtitle := WelcomeSubtitleStyle.Render("Last Known Good \u2014 the open source AI coding agent")
-	inputLine := renderInput("> ", m.input, "█", 60)
+	inputWidth := m.width - 4
+	if inputWidth > 60 {
+		inputWidth = 60
+	}
+	if inputWidth < 20 {
+		inputWidth = 20
+	}
 
-	return lipgloss.JoinVertical(
+	logo := WelcomeLogoStyle.Render("Last Known Good")
+	subtitle := WelcomeSubtitleStyle.Render("The open source AI coding agent")
+	inputLine := renderInput("> ", m.input, "█", inputWidth)
+
+	content := lipgloss.JoinVertical(
 		lipgloss.Center,
 		spacing,
 		"",
-		title,
+		logo,
 		"",
 		subtitle,
 		"",
 		"",
 		inputLine,
 	)
+
+	return WelcomeContainer.Width(m.width).Render(content)
 }
 
 func (m *Model) appendUserMessage(content string) {
