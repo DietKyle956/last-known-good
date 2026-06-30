@@ -114,7 +114,7 @@ func TestSubmitChannelSendsPrompt(t *testing.T) {
 
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
-	m.textarea.SetValue("hello")
+	m.input = "hello"
 	m.sendMessage()
 
 	select {
@@ -408,8 +408,11 @@ func TestWelcomeScreenRenders(t *testing.T) {
 	}
 
 	v := m.View()
-	if !contains(v, "LKG") && !contains(v, "Last Known Good") {
-		t.Fatalf("expected brand text in welcome screen, got %q", v)
+	if !contains(v, "LKG") {
+		t.Fatalf("expected LKG in welcome screen, got %q", v)
+	}
+	if !contains(v, "Last Known Good") {
+		t.Fatalf("expected subtitle in welcome screen, got %q", v)
 	}
 }
 
@@ -419,7 +422,7 @@ func TestWelcomeScreenTransitionsToChatOnSend(t *testing.T) {
 	m := New(events, submit)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
-	m.textarea.SetValue("hello")
+	m.input = "hello"
 	m.sendMessage()
 
 	if !m.started {

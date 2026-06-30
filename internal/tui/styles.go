@@ -113,15 +113,12 @@ var (
 				Foreground(lipgloss.Color(ColorMuted))
 
 	WelcomeInputStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(ColorPrimaryText)).
-				Width(60).
-				Align(lipgloss.Center)
-)
+			Foreground(lipgloss.Color(ColorPrimaryText)).
+			Width(60).
+			Align(lipgloss.Center)
 
-var LKGAsciiArt = []string{
-	`██     ██   ██████`,
-	`██    ███  ██   ██`,
-	`██  ██ ██  ██████`,
-	`██ ██  ██  ██`,
-	`████   ██  ██`,
-}
+	InputBarStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color(ColorBackground)).
+			Foreground(lipgloss.Color(ColorPrimaryText)).
+			Padding(0, 0)
+)

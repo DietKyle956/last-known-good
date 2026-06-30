@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -20,7 +19,6 @@ type Model struct {
 	events   <-chan agent.AgentEvent
 	submit   chan<- string
 	viewport viewport.Model
-	textarea textarea.Model
 	spinner  spinner.Model
 	help     help.Model
 	ready    bool
@@ -30,12 +28,13 @@ type Model struct {
 	bubbles  []messageBubble
 	status   statusData
 	showHelp bool
+	input    string
 
 	streaming bool
 	thinking  bool
 
-	toolCards     []toolCallCard
-	cardsExpanded bool
+	toolCards      []toolCallCard
+	cardsExpanded  bool
 }
 
 func New(events <-chan agent.AgentEvent, submit chan<- string) *Model {
@@ -43,23 +42,21 @@ func New(events <-chan agent.AgentEvent, submit chan<- string) *Model {
 	s.Style = SpinnerStyle
 	s.Spinner = spinner.Dot
 
-	ta := newTextarea()
-
 	return &Model{
 		events:   events,
 		submit:   submit,
 		spinner:  s,
-		textarea: ta,
 		help:     newHelpModel(),
 		status: statusData{
 			modelName:    "",
 			tokenCount:   0,
 			sandboxState: "",
 		},
-		bubbles:   []messageBubble{},
-		toolCards: []toolCallCard{},
-		showHelp:  false,
-		thinking:  false,
+		bubbles:       []messageBubble{},
+		toolCards:     []toolCallCard{},
+		showHelp:      false,
+		thinking:      false,
+		input:         "",
 	}
 }
 
@@ -105,6 +102,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.toolCards[i].collapsed = !m.cardsExpanded
 			}
 			m.updateViewport()
+		default:
+			m.handleInput(msg)
 		}
 
 	case agentEventMsg:
@@ -118,19 +117,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateViewport()
 			return m, cmd
 		}
-
-	case tea.FocusMsg:
-		m.textarea.Focus()
-
-	case tea.BlurMsg:
-		m.textarea.Blur()
 	}
 
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
-
-	m.textarea, cmd = m.textarea.Update(msg)
-	cmds = append(cmds, cmd)
 
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
@@ -143,10 +133,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+func (m *Model) handleInput(msg tea.KeyMsg) {
+	switch msg.String() {
+	case "backspace":
+		if len(m.input) > 0 {
+			m.input = m.input[:len(m.input)-1]
+		}
+	default:
+		if len(msg.Runes) > 0 {
+			m.input += string(msg.Runes)
+		}
+	}
+}
+
 func (m *Model) handleResize(msg tea.WindowSizeMsg) {
 	headerHeight := 1
 	statusHeight := 2
-	inputHeight := 5
+	inputHeight := 2
 	helpHeight := 0
 	if m.showHelp {
 		helpHeight = 8
@@ -165,15 +168,13 @@ func (m *Model) handleResize(msg tea.WindowSizeMsg) {
 		m.viewport.Height = availableHeight
 	}
 
-	m.textarea.SetWidth(msg.Width)
-	m.textarea.SetHeight(inputHeight - 1)
 	m.help.Width = msg.Width
 
 	m.updateViewport()
 }
 
 func (m *Model) sendMessage() tea.Cmd {
-	text := strings.TrimSpace(m.textarea.Value())
+	text := strings.TrimSpace(m.input)
 	if text == "" {
 		return nil
 	}
@@ -185,8 +186,7 @@ func (m *Model) sendMessage() tea.Cmd {
 
 	m.appendUserMessage(text)
 	m.submit <- text
-	m.textarea.Reset()
-	m.textarea.Focus()
+	m.input = ""
 	return nil
 }
 
@@ -202,7 +202,7 @@ func (m *Model) View() string {
 	header := m.renderHeader()
 	viewportView := ViewportStyle.Render(m.viewport.View())
 	statusBar := m.renderStatusBar()
-	inputView := InputTextStyle.Render(m.textarea.View())
+	inputView := InputBarStyle.Render(renderInput("> ", m.input, "█", m.width))
 
 	parts := []string{header, viewportView, statusBar, inputView}
 
@@ -225,40 +225,28 @@ func (m *Model) renderHeader() string {
 }
 
 func (m *Model) renderWelcome() string {
-	brand := m.renderBrand()
-
 	topPad := m.height / 3
 	if topPad < 2 {
 		topPad = 2
 	}
 
-	spacing := strings.Repeat("\n", topPad)
+	spacing := strings.Repeat("\n", topPad-1)
 
-	inputView := m.textarea.View()
-	prompt := InputPromptStyle.Render("> ")
-	inputLine := prompt + inputView
-
+	title := WelcomeTitleStyle.Render("LKG")
 	subtitle := WelcomeSubtitleStyle.Render("Last Known Good \u2014 the open source AI coding agent")
+	inputLine := renderInput("> ", m.input, "█", 60)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Center,
 		spacing,
-		brand,
+		"",
+		title,
 		"",
 		subtitle,
 		"",
 		"",
 		inputLine,
 	)
-}
-
-func (m *Model) renderBrand() string {
-	var b strings.Builder
-	for _, line := range LKGAsciiArt {
-		b.WriteString(WelcomeTitleStyle.Render(line))
-		b.WriteString("\n")
-	}
-	return strings.TrimSuffix(b.String(), "\n")
 }
 
 func (m *Model) appendUserMessage(content string) {
@@ -309,7 +297,7 @@ func (m *Model) handleChunk(content string) {
 			last.content += content
 		}
 	}
-	m.status.tokenCount += len(content) / 4 // rough token estimate
+	m.status.tokenCount += len(content) / 4
 	m.updateViewport()
 	m.viewport.GotoBottom()
 }
@@ -334,7 +322,7 @@ func (m *Model) handleToolCallStarted(call *core.ToolCall) {
 	})
 	m.bubbles = append(m.bubbles, messageBubble{
 		msgType: msgToolResult,
-		content: "… running",
+		content: "\u2026 running",
 	})
 	m.updateViewport()
 	m.viewport.GotoBottom()
@@ -345,9 +333,8 @@ func (m *Model) handleToolCallFinished(call *core.ToolCall, result *core.ToolRes
 		return
 	}
 
-	// Remove the "… running" indicator
 	for i := len(m.bubbles) - 1; i >= 0; i-- {
-		if m.bubbles[i].msgType == msgToolResult && m.bubbles[i].content == "… running" {
+		if m.bubbles[i].msgType == msgToolResult && m.bubbles[i].content == "\u2026 running" {
 			m.bubbles = append(m.bubbles[:i], m.bubbles[i+1:]...)
 			break
 		}
@@ -361,9 +348,9 @@ func (m *Model) handleToolCallFinished(call *core.ToolCall, result *core.ToolRes
 		}
 	}
 
-	status := "→ " + result.Content
+	status := "\u2192 " + result.Content
 	if result.IsError {
-		status = "✗ " + result.Content
+		status = "\u2717 " + result.Content
 	}
 
 	m.bubbles = append(m.bubbles, messageBubble{

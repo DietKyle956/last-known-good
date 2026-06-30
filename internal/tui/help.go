@@ -25,8 +25,8 @@ func (k keyMap) FullHelp() [][]key.Binding {
 
 var keys = keyMap{
 	Send: key.NewBinding(
-		key.WithKeys("alt+enter", "ctrl+j"),
-		key.WithHelp("alt+enter", "send message"),
+		key.WithKeys("enter"),
+		key.WithHelp("enter", "send message"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("ctrl+c", "ctrl+d"),
