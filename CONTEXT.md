@@ -248,12 +248,27 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 
 ## What was built (LKG-012)
 
+### Architecture deepening (slices 1-6)
+
 - **Unit tests for pure functions**: 27 tests for `validateArgs`, `validateProperty`, `quote`, `escapeSed` in `internal/tools/tools_internal_test.go` — zero external dependencies, run without Docker
 - **Iterative agent loop**: `agent.loop()` removed, `Run()` now uses a `for` loop — stack depth is O(1) regardless of tool call turns
 - **Session package eliminated**: `internal/session/` deleted; `SaveMessages` and `Resume` moved as methods on `*store.Store` — tests migrated to `store_test.go`
 - **`sandbox.Execer` interface**: narrow `Exec(command) (string, error)` interface extracted; `Sandbox` dead interface removed; `NewDockerExecer` adapter wraps `*SessionHandle` for production; `mockExecer` enables unit tests without Docker
 - **`context.Context` threaded through stack**: all key interfaces (`LLM.Chat`, `ToolExecutor.Execute`, `Agent.Run`, `sandbox.Execer.Exec`, `sandbox.Exec`) now accept `ctx`; `http.NewRequestWithContext` used in LLM client; `exec.CommandContext` used in sandbox; cancellation tests added
 - **`Session` type extracted**: multi-turn agent lifecycle formalized as `internal/agent.Session` with `Run(ctx, messages, submit, events)` — replaces inline `coordinator` goroutine in `chat.go`; tested for single/multi-turn, empty prompt, and context cancellation
+
+### Heuristic Model Router & Thinking Mode (slice 7)
+
+- **`internal/router`** package — pluggable model routing for the agent loop
+- **`Router` interface** with `Route(ctx, RouteRequest) RouteDecision` — routing logic can be replaced without touching the agent loop
+- **`HeuristicRouter`** implementation deciding model and thinking mode based on:
+  - **Single-file turn**: routes to `deepseek-v4-flash` with thinking disabled
+  - **Multi-file turn** (above configurable threshold): routes to `deepseek-v4-pro` with thinking enabled
+  - **Post-failure turn**: routes to `deepseek-v4-pro` with thinking enabled
+  - **Complexity signal word** in prompt: routes to `deepseek-v4-pro` with thinking enabled
+  - **Flash retry after failure** (opt-in via `PostFailureModel`): Flash with thinking enabled
+- **`NewSessionWithRouter`** — alternate Session constructor using a Router + LLM factory per turn
+- 6 independent router unit tests + 1 Session integration test covering all routing scenarios
 
 ## Package structure
 
@@ -263,6 +278,7 @@ internal/
   core/             shared domain types (Message, ToolCall, ToolResult, Result)
   agent/            core agent loop + event types + Session (complete)
   llm/              DeepSeek API client (complete)
+  router/           pluggable model router (complete)
   sandbox/          Docker sandbox lifecycle + Execer interface (complete)
   tools/            tool registry + 7 built-in sandbox tools (complete)
   singleshot/       single-shot CLI renderer (text + JSON) (complete)
@@ -280,6 +296,7 @@ internal/
 | 4 | Activate sandbox Execer interface, remove dead Sandbox interface |
 | 5 | Thread context.Context through agent, llm, sandbox, tools, CLI |
 | 6 | Extract Session type from chat.go coordinator |
+| 7 | Heuristic Model Router & Thinking Mode |
 
 ### LKG-006 updated
 
