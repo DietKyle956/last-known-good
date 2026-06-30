@@ -357,7 +357,7 @@ func TestSchemaSupportsStrict_objectWithStringProperty(t *testing.T) {
 	}
 
 	if !SchemaSupportsStrict(map[string]any{
-		"type": "object",
+		"type":       "object",
 		"properties": map[string]any{},
 	}) {
 		t.Fatal("expected empty properties object to support strict mode")
