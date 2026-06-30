@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/DietKyle956/last-known-good/internal/agent"
 	"github.com/DietKyle956/last-known-good/internal/core"
 	"github.com/DietKyle956/last-known-good/internal/hooks"
 	"github.com/DietKyle956/last-known-good/internal/llm"
+	"github.com/DietKyle956/last-known-good/internal/logger"
 	"github.com/DietKyle956/last-known-good/internal/sandbox"
 	"github.com/DietKyle956/last-known-good/internal/singleshot"
 	"github.com/DietKyle956/last-known-good/internal/tools"
@@ -64,6 +67,27 @@ var runCmd = &cobra.Command{
 		hookSys.Register(hooks.BeforeToolCall, dangerous.Handler)
 		autoFormat := hooks.NewAutoFormatHook(shell, nil, nil)
 		hookSys.Register(hooks.AfterToolCall, autoFormat.Handler)
+
+		sessionID := time.Now().UnixMilli()
+		logDir := filepath.Join(cwd, "logs")
+		os.MkdirAll(logDir, 0755)
+		log, err := logger.New(sessionID, logDir)
+		if err != nil {
+			return fmt.Errorf("create session logger: %w", err)
+		}
+		defer log.Close()
+		for _, ht := range []hooks.HookType{
+			hooks.SessionStarted,
+			hooks.SessionEnded,
+			hooks.BeforeModelCall,
+			hooks.AfterModelCall,
+			hooks.BeforeToolCall,
+			hooks.AfterToolCall,
+		} {
+			hookSys.Register(ht, log.Hook)
+		}
+		hookSys.Notify(context.Background(), hooks.HookEvent{Type: hooks.SessionStarted, SessionID: sessionID})
+		defer hookSys.Notify(context.Background(), hooks.HookEvent{Type: hooks.SessionEnded, SessionID: sessionID})
 
 		events := make(chan agent.AgentEvent, 128)
 		a := agent.New(client, reg)
