@@ -36,6 +36,11 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+type SessionRecord struct {
+	ID        int64
+	CreatedAt string
+}
+
 type MessageRecord struct {
 	ID        int64
 	SessionID int64
@@ -171,6 +176,27 @@ func (s *Store) SessionExists(id int64) (bool, error) {
 		return false, fmt.Errorf("query session: %w", err)
 	}
 	return count > 0, nil
+}
+
+func (s *Store) ListSessions() ([]SessionRecord, error) {
+	rows, err := s.db.Query("SELECT id, created_at FROM sessions ORDER BY id DESC")
+	if err != nil {
+		return nil, fmt.Errorf("query sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var sessions []SessionRecord
+	for rows.Next() {
+		var sess SessionRecord
+		if err := rows.Scan(&sess.ID, &sess.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan session: %w", err)
+		}
+		sessions = append(sessions, sess)
+	}
+	if sessions == nil {
+		sessions = []SessionRecord{}
+	}
+	return sessions, rows.Err()
 }
 
 func (s *Store) CreateSession() (int64, error) {

@@ -575,6 +575,65 @@ func TestRoundTripStateEquivalence(t *testing.T) {
 	}
 }
 
+func TestListSessionsReturnsAllSessions(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New(%q) returned error: %v", dbPath, err)
+	}
+	defer s.Close()
+
+	s1, err := s.CreateSession()
+	if err != nil {
+		t.Fatalf("CreateSession() returned error: %v", err)
+	}
+	s2, err := s.CreateSession()
+	if err != nil {
+		t.Fatalf("CreateSession() returned error: %v", err)
+	}
+
+	sessions, err := s.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions() returned error: %v", err)
+	}
+
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(sessions))
+	}
+
+	if sessions[0].ID != s2 || sessions[0].CreatedAt == "" {
+		t.Errorf("expected first session to be %d with non-empty created_at, got %+v", s2, sessions[0])
+	}
+	if sessions[1].ID != s1 || sessions[1].CreatedAt == "" {
+		t.Errorf("expected second session to be %d with non-empty created_at, got %+v", s1, sessions[1])
+	}
+}
+
+func TestListSessionsEmptyReturnsEmptySlice(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New(%q) returned error: %v", dbPath, err)
+	}
+	defer s.Close()
+
+	sessions, err := s.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions() returned error: %v", err)
+	}
+
+	if sessions == nil {
+		t.Fatal("ListSessions() returned nil, expected empty slice")
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected 0 sessions, got %d", len(sessions))
+	}
+}
+
 func TestResumeMessagesAreCoreMessages(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
