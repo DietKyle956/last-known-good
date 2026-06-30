@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/DietKyle956/last-known-good/internal/core"
 	"github.com/DietKyle956/last-known-good/internal/hooks"
@@ -36,11 +38,20 @@ type ToolExecutor interface {
 
 // Agent runs the core agent loop.
 type Agent struct {
-	llm    LLM
-	exec   ToolExecutor
-	events chan AgentEvent
-	hooks  *hooks.System
+	llm          LLM
+	exec         ToolExecutor
+	events       chan AgentEvent
+	hooks        *hooks.System
+	toolTimeout  time.Duration
+	maxToolCalls int
 }
+
+// SetToolTimeout sets the per-tool wall-clock timeout. Zero means no timeout.
+func (a *Agent) SetToolTimeout(d time.Duration) { a.toolTimeout = d }
+
+// SetMaxToolCalls sets the maximum number of tool-call iterations per Run call.
+// Zero means unlimited.
+func (a *Agent) SetMaxToolCalls(n int) { a.maxToolCalls = n }
 
 // New creates a new Agent.
 func New(llm LLM, exec ToolExecutor) *Agent {
@@ -64,6 +75,7 @@ func (a *Agent) Events() <-chan AgentEvent {
 // Run starts the agent loop with the given messages.
 func (a *Agent) Run(ctx context.Context, messages []core.Message) {
 	defer close(a.events)
+	toolCallIter := 0
 	for {
 		if a.hooks != nil {
 			a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.BeforeModelCall})
@@ -105,8 +117,25 @@ func (a *Agent) Run(ctx context.Context, messages []core.Message) {
 			return
 		}
 
+		toolCallIter++
+		if a.maxToolCalls > 0 && toolCallIter >= a.maxToolCalls {
+			err := fmt.Errorf("tool call iteration limit reached (%d)", a.maxToolCalls)
+			a.events <- AgentEvent{Type: EventError, Error: err}
+			return
+		}
+
 		messages = a.executeToolCalls(ctx, messages, toolCalls)
 	}
+}
+
+// timeoutContext returns a context with the configured tool timeout and its
+// cancel function. When no timeout is configured it returns ctx and nil, and
+// the caller must not call cancel.
+func (a *Agent) timeoutContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if a.toolTimeout > 0 {
+		return context.WithTimeout(ctx, a.toolTimeout)
+	}
+	return ctx, nil
 }
 
 func (a *Agent) executeToolCalls(ctx context.Context, messages []core.Message, calls []core.ToolCall) []core.Message {
@@ -170,7 +199,11 @@ func (a *Agent) executeToolCalls(ctx context.Context, messages []core.Message, c
 			tc := tc
 			go func() {
 				defer wg.Done()
-				r := a.exec.Execute(ctx, tc)
+				execCtx, cancel := a.timeoutContext(ctx)
+				if cancel != nil {
+					defer cancel()
+				}
+				r := a.exec.Execute(execCtx, tc)
 				a.events <- AgentEvent{Type: EventToolCallFinished, ToolCall: &tc, ToolResult: &r}
 				results[resultIdx[tc.ID]] = r
 				if a.hooks != nil {
@@ -183,7 +216,11 @@ func (a *Agent) executeToolCalls(ctx context.Context, messages []core.Message, c
 
 	// Execute write tools sequentially (one at a time).
 	for _, tc := range activeRW {
-		r := a.exec.Execute(ctx, tc)
+		execCtx, cancel := a.timeoutContext(ctx)
+		if cancel != nil {
+			defer cancel()
+		}
+		r := a.exec.Execute(execCtx, tc)
 		a.events <- AgentEvent{Type: EventToolCallFinished, ToolCall: &tc, ToolResult: &r}
 		results[resultIdx[tc.ID]] = r
 		if a.hooks != nil {
