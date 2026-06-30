@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/DietKyle956/last-known-good/internal/core"
+	"github.com/DietKyle956/last-known-good/internal/hooks"
 	"github.com/DietKyle956/last-known-good/internal/router"
 )
 
@@ -13,6 +14,12 @@ type Session struct {
 	exec       ToolExecutor
 	router     router.Router
 	llmFactory func(router.RouteDecision) LLM
+	hooks      *hooks.System
+}
+
+// SetHooks attaches a hooks system to this session.
+func (s *Session) SetHooks(h *hooks.System) {
+	s.hooks = h
 }
 
 // NewSession creates a new Session with a fixed LLM.
@@ -39,6 +46,11 @@ func NewSessionWithRouter(exec ToolExecutor, r router.Router, llmFactory func(ro
 func (s *Session) Run(ctx context.Context, messages []core.Message, submit <-chan string, events chan<- AgentEvent) {
 	defer close(events)
 
+	if s.hooks != nil {
+		s.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.SessionStarted})
+		defer s.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.SessionEnded})
+	}
+
 	var prevFailed bool
 	var prevTouchedFiles int
 
@@ -58,6 +70,9 @@ func (s *Session) Run(ctx context.Context, messages []core.Message, submit <-cha
 		}
 
 		a := New(turnLLM, s.exec)
+		if s.hooks != nil {
+			a.SetHooks(s.hooks)
+		}
 
 		forwardDone := make(chan struct{})
 		go func() {

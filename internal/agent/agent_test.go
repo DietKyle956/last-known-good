@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/DietKyle956/last-known-good/internal/core"
+	"github.com/DietKyle956/last-known-good/internal/hooks"
 )
 
 type noToolLLM struct {
@@ -526,4 +527,120 @@ type blockingLLM struct {
 func (b *blockingLLM) Chat(ctx context.Context, messages []core.Message) (<-chan core.Result, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
+}
+
+func TestAgentFiresModelCallHooks(t *testing.T) {
+	hookSys := hooks.New(nil)
+	llm := &noToolLLM{response: "hello"}
+	exec := &spyExecutor{}
+	agent := New(llm, exec)
+	agent.SetHooks(hookSys)
+
+	var before, after bool
+	hookSys.Register(hooks.BeforeModelCall, func(hooks.HookEvent) *hooks.HookResult {
+		before = true
+		return nil
+	})
+	hookSys.Register(hooks.AfterModelCall, func(hooks.HookEvent) *hooks.HookResult {
+		after = true
+		return nil
+	})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range agent.Events() {
+		}
+	}()
+
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Hi"}})
+	<-done
+
+	if !before {
+		t.Error("expected BeforeModelCall hook to fire")
+	}
+	if !after {
+		t.Error("expected AfterModelCall hook to fire")
+	}
+}
+
+func TestAgentFiresToolCallHooks(t *testing.T) {
+	hookSys := hooks.New(nil)
+	llm := &scriptedLLM{
+		results: [][]core.Result{
+			{
+				{ToolCalls: []core.ToolCall{{ID: "call1", Name: "read_file", Arguments: `{"path":"x.txt"}`}}, Done: true},
+			},
+			{
+				{Content: "Done", IsChunk: true},
+				{Done: true},
+			},
+		},
+	}
+	exec := &recordingExecutor{}
+	agent := New(llm, exec)
+	agent.SetHooks(hookSys)
+
+	var before, after bool
+	hookSys.Register(hooks.BeforeToolCall, func(hooks.HookEvent) *hooks.HookResult {
+		before = true
+		return nil
+	})
+	hookSys.Register(hooks.AfterToolCall, func(hooks.HookEvent) *hooks.HookResult {
+		after = true
+		return nil
+	})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range agent.Events() {
+		}
+	}()
+
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Read file"}})
+	<-done
+
+	if !before {
+		t.Error("expected BeforeToolCall hook to fire")
+	}
+	if !after {
+		t.Error("expected AfterToolCall hook to fire")
+	}
+}
+
+func TestAgentBlockingHookPreventsToolExecution(t *testing.T) {
+	hookSys := hooks.New(nil)
+	llm := &scriptedLLM{
+		results: [][]core.Result{
+			{
+				{ToolCalls: []core.ToolCall{{ID: "call1", Name: "read_file", Arguments: `{"path":"x.txt"}`}}, Done: true},
+			},
+			{
+				{Content: "Done", IsChunk: true},
+				{Done: true},
+			},
+		},
+	}
+	exec := &recordingExecutor{}
+	agent := New(llm, exec)
+	agent.SetHooks(hookSys)
+
+	hookSys.Register(hooks.BeforeToolCall, func(hooks.HookEvent) *hooks.HookResult {
+		return &hooks.HookResult{Block: true}
+	})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range agent.Events() {
+		}
+	}()
+
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Read file"}})
+	<-done
+
+	if len(exec.calls) != 0 {
+		t.Fatalf("expected 0 tool executions (blocked by hook), got %d", len(exec.calls))
+	}
 }

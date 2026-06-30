@@ -2,48 +2,26 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/DietKyle956/last-known-good/internal/core"
+	"github.com/DietKyle956/last-known-good/internal/hooks"
 )
 
-// AgentEventType categorises agent events.
-type AgentEventType int
+// AgentEvent is shorthand for core.AgentEvent.
+type AgentEvent = core.AgentEvent
 
+// AgentEventType is shorthand for core.AgentEventType.
+type AgentEventType = core.AgentEventType
+
+// Convenience aliases for event type constants.
 const (
-	EventModelResponseChunk AgentEventType = iota + 1
-	EventToolCallStarted
-	EventToolCallFinished
-	EventTurnComplete
-	EventError
+	EventModelResponseChunk = core.EventModelResponseChunk
+	EventToolCallStarted    = core.EventToolCallStarted
+	EventToolCallFinished   = core.EventToolCallFinished
+	EventTurnComplete       = core.EventTurnComplete
+	EventError              = core.EventError
 )
-
-// AgentEvent is emitted by the agent loop at lifecycle points.
-type AgentEvent struct {
-	Type       AgentEventType
-	Content    string
-	ToolCall   *core.ToolCall
-	ToolResult *core.ToolResult
-	Error      error
-}
-
-func (t AgentEventType) String() string {
-	switch t {
-	case EventModelResponseChunk:
-		return "model_response_chunk"
-	case EventToolCallStarted:
-		return "tool_call_started"
-	case EventToolCallFinished:
-		return "tool_call_finished"
-	case EventTurnComplete:
-		return "turn_complete"
-	case EventError:
-		return "error"
-	default:
-		return fmt.Sprintf("unknown(%d)", int(t))
-	}
-}
 
 // LLM is the interface for calling a language model.
 type LLM interface {
@@ -61,6 +39,7 @@ type Agent struct {
 	llm    LLM
 	exec   ToolExecutor
 	events chan AgentEvent
+	hooks  *hooks.System
 }
 
 // New creates a new Agent.
@@ -72,6 +51,11 @@ func New(llm LLM, exec ToolExecutor) *Agent {
 	}
 }
 
+// SetHooks attaches a hooks system to this agent.
+func (a *Agent) SetHooks(h *hooks.System) {
+	a.hooks = h
+}
+
 // Events returns a read-only channel of agent events.
 func (a *Agent) Events() <-chan AgentEvent {
 	return a.events
@@ -81,9 +65,16 @@ func (a *Agent) Events() <-chan AgentEvent {
 func (a *Agent) Run(ctx context.Context, messages []core.Message) {
 	defer close(a.events)
 	for {
+		if a.hooks != nil {
+			a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.BeforeModelCall})
+		}
+
 		results, err := a.llm.Chat(ctx, messages)
 		if err != nil {
 			a.events <- AgentEvent{Type: EventError, Error: err}
+			if a.hooks != nil {
+				a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.AfterModelCall, Error: err})
+			}
 			return
 		}
 
@@ -92,6 +83,9 @@ func (a *Agent) Run(ctx context.Context, messages []core.Message) {
 		for r := range results {
 			if r.Err != nil {
 				a.events <- AgentEvent{Type: EventError, Error: r.Err}
+				if a.hooks != nil {
+					a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.AfterModelCall, Error: r.Err})
+				}
 				return
 			}
 			if r.IsChunk {
@@ -100,6 +94,10 @@ func (a *Agent) Run(ctx context.Context, messages []core.Message) {
 			if len(r.ToolCalls) > 0 {
 				toolCalls = append(toolCalls, r.ToolCalls...)
 			}
+		}
+
+		if a.hooks != nil {
+			a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.AfterModelCall})
 		}
 
 		if len(toolCalls) == 0 {
@@ -127,18 +125,39 @@ func (a *Agent) executeToolCalls(ctx context.Context, messages []core.Message, c
 		resultIdx[tc.ID] = i
 	}
 
-	// Emit all started events first (synchronous — determinisitic ordering).
+	// Check before-tool-call hooks and filter out blocked tools.
+	var activeRO, activeRW []core.ToolCall
 	for _, tc := range ro {
-		a.events <- AgentEvent{Type: EventToolCallStarted, ToolCall: &tc}
+		if a.hooks != nil {
+			if blocked := a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.BeforeToolCall, ToolCall: &tc}); blocked {
+				results[resultIdx[tc.ID]] = core.ToolResult{ToolCallID: tc.ID, Content: "blocked by hook", IsError: true}
+				continue
+			}
+		}
+		activeRO = append(activeRO, tc)
 	}
 	for _, tc := range rw {
+		if a.hooks != nil {
+			if blocked := a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.BeforeToolCall, ToolCall: &tc}); blocked {
+				results[resultIdx[tc.ID]] = core.ToolResult{ToolCallID: tc.ID, Content: "blocked by hook", IsError: true}
+				continue
+			}
+		}
+		activeRW = append(activeRW, tc)
+	}
+
+	// Emit all started events first (synchronous — determinisitic ordering).
+	for _, tc := range activeRO {
+		a.events <- AgentEvent{Type: EventToolCallStarted, ToolCall: &tc}
+	}
+	for _, tc := range activeRW {
 		a.events <- AgentEvent{Type: EventToolCallStarted, ToolCall: &tc}
 	}
 
 	// Execute read-only tools in parallel.
-	if len(ro) > 0 {
+	if len(activeRO) > 0 {
 		var wg sync.WaitGroup
-		for _, tc := range ro {
+		for _, tc := range activeRO {
 			wg.Add(1)
 			tc := tc
 			go func() {
@@ -146,16 +165,22 @@ func (a *Agent) executeToolCalls(ctx context.Context, messages []core.Message, c
 				r := a.exec.Execute(ctx, tc)
 				a.events <- AgentEvent{Type: EventToolCallFinished, ToolCall: &tc, ToolResult: &r}
 				results[resultIdx[tc.ID]] = r
+				if a.hooks != nil {
+					a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.AfterToolCall, ToolCall: &tc, ToolResult: &r})
+				}
 			}()
 		}
 		wg.Wait()
 	}
 
 	// Execute write tools sequentially (one at a time).
-	for _, tc := range rw {
+	for _, tc := range activeRW {
 		r := a.exec.Execute(ctx, tc)
 		a.events <- AgentEvent{Type: EventToolCallFinished, ToolCall: &tc, ToolResult: &r}
 		results[resultIdx[tc.ID]] = r
+		if a.hooks != nil {
+			a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.AfterToolCall, ToolCall: &tc, ToolResult: &r})
+		}
 	}
 
 	for _, r := range results {
