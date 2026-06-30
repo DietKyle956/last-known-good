@@ -122,24 +122,9 @@ Docker Compose dev environment, and GitHub Actions CI.
 - **Memory limits**: `--memory` flag passed to `docker run` when `cfg.Memory` is set
 - **Test coverage**: 4 new tests against real Docker containers — default no-network, allowlist reachable, allowlist blocks others, CPU/memory limits verified via `docker inspect`
 
-## Package structure
-
-```
-cmd/agent/          main.go + cmd/ (root, chat, run)
-internal/
-  core/             shared domain types + AgentEvent types (complete)
-  agent/            core agent loop + event types + Session (complete)
-  hooks/            typed hooks framework (complete)
-  llm/              DeepSeek API client (complete)
-  router/           pluggable model router (complete)
-  sandbox/          Docker sandbox lifecycle + Execer interface (complete)
-  tools/            tool registry + 7 built-in sandbox tools (complete)
-  singleshot/       single-shot CLI renderer (text + JSON) (complete)
-  store/            SQLite session persistence + SaveMessages/Resume (complete)
-  tui/              Bubble Tea terminal UI (complete)
-```
-
 ## TDD approach
+
+Built with vertical tracer-bullet slices — one test → one implementation per cycle.
 
 Built with vertical tracer-bullet slices — one test → one implementation per cycle.
 
@@ -273,23 +258,6 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 - **`NewSessionWithRouter`** — alternate Session constructor using a Router + LLM factory per turn
 - 6 independent router unit tests + 1 Session integration test covering all routing scenarios
 
-## Package structure
-
-```
-cmd/agent/          main.go + cmd/ (root, chat, run)
-internal/
-  core/             shared domain types + AgentEvent types (complete)
-  agent/            core agent loop + event types + Session (complete)
-  hooks/            typed hooks framework (complete)
-  llm/              DeepSeek API client (complete)
-  router/           pluggable model router (complete)
-  sandbox/          Docker sandbox lifecycle + Execer interface (complete)
-  tools/            tool registry + 7 built-in sandbox tools (complete)
-  singleshot/       single-shot CLI renderer (text + JSON) (complete)
-  store/            SQLite session persistence + SaveMessages/Resume (complete)
-  tui/              Bubble Tea terminal UI (complete)
-```
-
 ### LKG-012 slices
 
 | Slice | What |
@@ -335,7 +303,8 @@ internal/
   hooks/            typed hooks framework (complete)
   llm/              DeepSeek API client (complete)
   router/           pluggable model router (complete)
-  sandbox/          Docker sandbox lifecycle + Execer interface (complete)
+   sandbox/          Docker sandbox lifecycle + Execer interface (complete)
+  skills/           file-based skills system with lazy loading (complete)
   tools/            tool registry + 7 built-in sandbox tools (complete)
   singleshot/       single-shot CLI renderer (text + JSON) (complete)
   store/            SQLite session persistence + SaveMessages/Resume (complete)
@@ -378,3 +347,16 @@ internal/
 - **Failure callback**: `onFailure(path, command, err)` is called when a formatter fails, allowing callers to record the event (e.g., via `store.SaveHookEvent`)
 - **Wired into `agent run`**: `run.go` creates the `AutoFormatHook` with the sandbox execer and registers it as an `AfterToolCall` hook
 - **Test coverage**: 13 unit tests — formatter runs for .go, skipped for unrecognized extensions, skipped for non-write_file tools, nil/invalid JSON edge cases, failure callback invoked, custom formatters work, default formatters, Formatters() returns a copy
+
+## What was built (LKG-016)
+
+- **`internal/skills`** — file-based skills system with lazy loading
+- **`Skill`** struct with `Name`, `Description`, `Body` — body is empty until explicitly read
+- **`Loader`** — discovers skills from a base directory; each skill lives in its own subfolder containing a markdown file with YAML frontmatter
+- **`Load()`** — scans the base directory for skill subfolders, reads each `.md` file, parses frontmatter for `name` and `description`; skips folders without markdown files, folders with missing/malformed frontmatter, and frontmatter without required fields — all silently, without crashing the loader
+- **`Summaries()`** — returns `[]Skill` with only `Name` and `Description` populated (body not loaded) — suitable for system prompt injection at session start
+- **`ReadBody(name)`** — lazily reads the full markdown body from disk for a named skill; returns an error for unknown skill names
+- **Lazy loading**: the full markdown body of a skill is never loaded into memory until `ReadBody` is called for that specific skill
+- **Frontmatter format**: standard YAML-style `---` delimited block with `name:` and `description:` keys; quoted and unquoted values supported; unclosed quotes treated as malformed
+- **No external dependencies**: pure Go standard library — no YAML parser, no additional modules
+- **Test coverage**: 10 tests — valid frontmatter with body, valid frontmatter without body, missing frontmatter, malformed frontmatter, missing required fields, multi-skill directory discovery, empty directory, lazy body loading, unknown skill returns error, skill without body returns empty
