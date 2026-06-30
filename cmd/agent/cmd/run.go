@@ -59,9 +59,11 @@ var runCmd = &cobra.Command{
 		reg := tools.New(shell)
 		tools.RegisterAll(reg)
 
-		hookSys := hooks.New(nil)
-		dangerous := hooks.NewDangerousCommandHook(nil)
-		hookSys.Register(hooks.BeforeToolCall, dangerous.Handler)
+	hookSys := hooks.New(nil)
+	dangerous := hooks.NewDangerousCommandHook(nil)
+	hookSys.Register(hooks.BeforeToolCall, dangerous.Handler)
+	autoFormat := hooks.NewAutoFormatHook(shell, nil, nil)
+	hookSys.Register(hooks.AfterToolCall, autoFormat.Handler)
 
 		events := make(chan agent.AgentEvent, 128)
 		a := agent.New(client, reg)
