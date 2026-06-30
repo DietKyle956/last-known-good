@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -63,6 +64,8 @@ var runCmd = &cobra.Command{
 		shell := sandbox.NewDockerExecer(handle)
 		reg := tools.New(shell)
 		tools.RegisterAll(reg)
+
+		client.SetTools(toDeepSeekTools(reg.ToolDefinitions()))
 
 		hookSys := hooks.New(nil)
 		dangerous := hooks.NewDangerousCommandHook(nil)
@@ -136,6 +139,28 @@ var runCmd = &cobra.Command{
 		renderer := singleshot.New(events, os.Stdout, jsonFlag)
 		return renderer.Run()
 	},
+}
+
+func toDeepSeekTools(defs []tools.ToolDefinition) []llm.DeepSeekToolDef {
+	out := make([]llm.DeepSeekToolDef, 0, len(defs))
+	for _, d := range defs {
+		var params json.RawMessage
+		if len(d.Parameters) > 0 {
+			b, err := llm.DeterministicMarshal(d.Parameters)
+			if err == nil {
+				params = json.RawMessage(b)
+			}
+		}
+		out = append(out, llm.DeepSeekToolDef{
+			Type: "function",
+			Function: llm.DeepSeekFunction{
+				Name:        d.Name,
+				Description: d.Description,
+				Parameters:  params,
+			},
+		})
+	}
+	return out
 }
 
 func init() {

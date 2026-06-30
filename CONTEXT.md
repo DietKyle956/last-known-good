@@ -11,6 +11,7 @@
 # LKG-014: Blocking Hook for Dangerous Commands — Complete
 # LKG-017: Structured JSONL Logging — Complete
 # LKG-018: CLI Session & Log Commands — Complete
+# LKG-019: Prompt-Cache-Friendly Request Shaping — Complete
 # LKG-023: Last Known Good System Prompt — Complete
 
 ## Summary
@@ -435,3 +436,23 @@ internal/
 | 3 | Tool definitions section included when provided |
 | 4 | Wired into `chat.go` |
 | 5 | Wired into `run.go` |
+
+## What was built (LKG-019)
+
+- **Deterministic `ToolDefinitions()` order**: `Registry.ToolDefinitions()` now returns tools sorted by name, eliminating non-deterministic map iteration order from the system prompt and tool definition payload
+- **`internal/llm/types.go`**: Added `Tools []DeepSeekToolDef` field to `DeepSeekRequest`, and `DeepSeekToolDef`/`DeepSeekFunction` types for the OpenAI-compatible `tools` API parameter
+- **`internal/llm/json.go`**: `DeterministicMarshal(v)` helper that produces JSON with map keys sorted lexicographically (recursively), ensuring byte-identical output for the same data structure
+- **`internal/llm/client.go`**: Added `SetTools(tools)` method on `DeepSeekClient`; `buildRequest` includes the `tools` field in every API request when tools are configured
+- **`cmd/agent/cmd/run.go`**: After registering all tools, calls `client.SetTools(toDeepSeekTools(reg.ToolDefinitions()))` with sorted, deterministically-serialized tool definitions
+- **No timestamp/counter**: The system prompt and tool definitions contain no per-call dynamic values — all fields are session-stable
+- **Test coverage**: 2 tool-level tests (sorted order, byte-identical payload across calls) + 1 LLM client test (full request body byte-identical across consecutive calls) + 5 deterministic JSON unit tests
+
+### LKG-019 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Sort `ToolDefinitions()` by name + test |
+| 2 | Deterministic JSON marshaler + test |
+| 3 | `Tools` field on `DeepSeekRequest` + wired into `buildRequest` |
+| 4 | `SetTools` on `DeepSeekClient` + wired into `run.go` |
+| 5 | Byte-level identity acceptance test across consecutive calls |
