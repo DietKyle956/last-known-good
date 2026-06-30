@@ -34,7 +34,7 @@ type Model struct {
 	streaming bool
 	thinking  bool
 
-	toolCards   []toolCallCard
+	toolCards     []toolCallCard
 	cardsExpanded bool
 }
 
@@ -56,10 +56,10 @@ func New(events <-chan agent.AgentEvent, submit chan<- string) *Model {
 			tokenCount:   0,
 			sandboxState: "",
 		},
-		bubbles:       []messageBubble{},
-		toolCards:     []toolCallCard{},
-		showHelp:      false,
-		thinking:      false,
+		bubbles:   []messageBubble{},
+		toolCards: []toolCallCard{},
+		showHelp:  false,
+		thinking:  false,
 	}
 }
 
@@ -271,15 +271,6 @@ func (m *Model) appendUserMessage(content string) {
 	m.thinking = true
 	m.updateViewport()
 	m.viewport.GotoBottom()
-}
-
-func (m *Model) appendThinkingIndicator() {
-	if m.thinking {
-		m.bubbles = append(m.bubbles, messageBubble{
-			msgType: msgAssistant,
-			content: m.spinner.View() + " thinking...",
-		})
-	}
 }
 
 func (m *Model) handleEvent(ev agent.AgentEvent) {

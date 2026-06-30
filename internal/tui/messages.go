@@ -24,7 +24,6 @@ type messageBubble struct {
 	content string
 	label   string
 	model   string
-	tokens  int
 }
 
 func (m *Model) renderMessageBubble(msg messageBubble) string {

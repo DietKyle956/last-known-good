@@ -3,16 +3,16 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 const (
-	ColorBackground   = "#00172e"
-	ColorPrimaryText  = "#f6dcac"
-	ColorAccent       = "#faa968"
-	ColorTeal         = "#3f8f8a"
-	ColorCyan         = "#8cbfb8"
-	ColorMuted        = "#a7c9c6"
-	ColorGreen        = "#028391"
-	ColorYellow       = "#e97b3c"
-	ColorRed          = "#f85525"
-	ColorStatusBg     = "#134e5a"
+	ColorBackground  = "#00172e"
+	ColorPrimaryText = "#f6dcac"
+	ColorAccent      = "#faa968"
+	ColorTeal        = "#3f8f8a"
+	ColorCyan        = "#8cbfb8"
+	ColorMuted       = "#a7c9c6"
+	ColorGreen       = "#028391"
+	ColorYellow      = "#e97b3c"
+	ColorRed         = "#f85525"
+	ColorStatusBg    = "#134e5a"
 )
 
 var (
@@ -84,10 +84,10 @@ var (
 			Background(lipgloss.Color(ColorBackground))
 
 	DividerStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(ColorTeal))
+			Foreground(lipgloss.Color(ColorTeal))
 
 	KeyShortcutStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(ColorTeal))
+				Foreground(lipgloss.Color(ColorTeal))
 
 	KeyDescStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(ColorMuted))
@@ -96,7 +96,7 @@ var (
 			Foreground(lipgloss.Color(ColorTeal))
 
 	KeyEllipsisStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(ColorMuted))
+				Foreground(lipgloss.Color(ColorMuted))
 
 	SpinnerStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(ColorCyan))
