@@ -8,6 +8,7 @@
 # LKG-009: Full TUI Shell — Complete
 # LKG-010: Sandbox Network Policy & Resource Limits — Complete
 # LKG-013: Hooks Framework — Complete
+# LKG-014: Blocking Hook for Dangerous Commands — Complete
 
 ## Summary
 
@@ -352,3 +353,16 @@ internal/
 | 5 | AfterToolCall cannot block, multiple hooks fire in registration order |
 | 6 | Agent integration: Session/Agent lifecycle calls |
 | 7 | Channel subscription from AgentEvent channel (criterion 12) |
+
+## What was built (LKG-014)
+
+- **`HookResult.Reason`** — field added so blocking hooks can explain why a command was denied
+- **`Notify` returns `*HookResult`** — changed from `bool` to `*HookResult`; `nil` means no block, non-nil carries the first blocking hook's `Block`/`Reason`
+- **`DangerousCommandHook`** — `BeforeToolCall` hook in `internal/hooks/dangerous.go` that inspects `bash` tool commands for dangerous patterns
+- **Configurable patterns**: `NewDangerousCommandHook(patterns)` takes a `[]string` of regex patterns; pass `nil` to use `DefaultDangerousPatterns()`
+- **Default dangerous patterns**: recursive delete (`rm -rf /`), filesystem formatting (`mkfs.*`), raw disk writes (`dd`, `> /dev/sdX`), fork bombs (`:(){...}`), mass permissions change (`chmod -R 777 /`), remote code execution pipes (`wget ... | sh`, `curl ... | sh`)
+- **Non-bash tools pass through**: only `bash` tool calls are inspected; `read_file`, `write_file`, etc. are not affected
+- **Invalid JSON or nil ToolCall**: the hook is lenient — parse failures pass through without blocking
+- **Blocked commands return structured error**: agent receives `ToolResult{IsError: true, Content: "blocked: command matches dangerous pattern %q"}` instead of crashing; the reason flows back to the model as the tool response
+- **Wired into `agent run`**: `run.go` creates a `hooks.System`, registers `DangerousCommandHook`, and attaches it to the agent
+- **Test coverage**: 9 dangerous hook unit tests (block/no-block, safe command, non-bash, custom patterns, nil/invalid edge cases) + 2 agent integration tests (blocked produces error result, safe passes through)

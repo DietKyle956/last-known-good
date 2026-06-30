@@ -36,11 +36,17 @@ func TestBeforeModelCallHookFires(t *testing.T) {
 func TestBeforeToolCallHookCanBlock(t *testing.T) {
 	s := New(nil)
 	s.Register(BeforeToolCall, func(HookEvent) *HookResult {
-		return &HookResult{Block: true}
+		return &HookResult{Block: true, Reason: "test block"}
 	})
-	blocked := s.Notify(context.Background(), HookEvent{Type: BeforeToolCall})
-	if !blocked {
-		t.Fatal("expected Notify to return true when a BeforeToolCall hook blocks")
+	r := s.Notify(context.Background(), HookEvent{Type: BeforeToolCall})
+	if r == nil {
+		t.Fatal("expected Notify to return a result when a BeforeToolCall hook blocks")
+	}
+	if !r.Block {
+		t.Fatal("expected result to have Block=true")
+	}
+	if r.Reason != "test block" {
+		t.Fatalf("expected reason %q, got %q", "test block", r.Reason)
 	}
 }
 
@@ -60,10 +66,10 @@ func TestAfterToolCallHookFires(t *testing.T) {
 func TestAfterToolCallHookBlockIgnored(t *testing.T) {
 	s := New(nil)
 	s.Register(AfterToolCall, func(HookEvent) *HookResult {
-		return &HookResult{Block: true}
+		return &HookResult{Block: true, Reason: "should be ignored"}
 	})
-	blocked := s.Notify(context.Background(), HookEvent{Type: AfterToolCall})
-	if blocked {
+	r := s.Notify(context.Background(), HookEvent{Type: AfterToolCall})
+	if r != nil {
 		t.Fatal("expected AfterToolCall hook block to be ignored - only BeforeToolCall should block")
 	}
 }
@@ -130,9 +136,9 @@ func TestBeforeToolCallHookDoesNotBlockByDefault(t *testing.T) {
 	s.Register(BeforeToolCall, func(HookEvent) *HookResult {
 		return nil
 	})
-	blocked := s.Notify(context.Background(), HookEvent{Type: BeforeToolCall})
-	if blocked {
-		t.Fatal("expected Notify to return false when no hook blocks")
+	r := s.Notify(context.Background(), HookEvent{Type: BeforeToolCall})
+	if r != nil {
+		t.Fatal("expected Notify to return nil when no hook blocks")
 	}
 }
 

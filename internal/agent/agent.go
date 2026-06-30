@@ -129,8 +129,12 @@ func (a *Agent) executeToolCalls(ctx context.Context, messages []core.Message, c
 	var activeRO, activeRW []core.ToolCall
 	for _, tc := range ro {
 		if a.hooks != nil {
-			if blocked := a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.BeforeToolCall, ToolCall: &tc}); blocked {
-				results[resultIdx[tc.ID]] = core.ToolResult{ToolCallID: tc.ID, Content: "blocked by hook", IsError: true}
+			if r := a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.BeforeToolCall, ToolCall: &tc}); r != nil {
+				reason := r.Reason
+				if reason == "" {
+					reason = "blocked by hook"
+				}
+				results[resultIdx[tc.ID]] = core.ToolResult{ToolCallID: tc.ID, Content: reason, IsError: true}
 				continue
 			}
 		}
@@ -138,8 +142,12 @@ func (a *Agent) executeToolCalls(ctx context.Context, messages []core.Message, c
 	}
 	for _, tc := range rw {
 		if a.hooks != nil {
-			if blocked := a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.BeforeToolCall, ToolCall: &tc}); blocked {
-				results[resultIdx[tc.ID]] = core.ToolResult{ToolCallID: tc.ID, Content: "blocked by hook", IsError: true}
+			if r := a.hooks.Notify(ctx, hooks.HookEvent{Type: hooks.BeforeToolCall, ToolCall: &tc}); r != nil {
+				reason := r.Reason
+				if reason == "" {
+					reason = "blocked by hook"
+				}
+				results[resultIdx[tc.ID]] = core.ToolResult{ToolCallID: tc.ID, Content: reason, IsError: true}
 				continue
 			}
 		}

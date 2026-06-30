@@ -644,3 +644,94 @@ func TestAgentBlockingHookPreventsToolExecution(t *testing.T) {
 		t.Fatalf("expected 0 tool executions (blocked by hook), got %d", len(exec.calls))
 	}
 }
+
+func TestAgentDangerousCommandHookBlocksBashCommand(t *testing.T) {
+	hookSys := hooks.New(nil)
+	dangerous := hooks.NewDangerousCommandHook(nil)
+	hookSys.Register(hooks.BeforeToolCall, dangerous.Handler)
+
+	llm := &scriptedLLM{
+		results: [][]core.Result{
+			{
+				{ToolCalls: []core.ToolCall{{ID: "call1", Name: "bash", Arguments: `{"command":"rm -rf /"}`}}, Done: true},
+			},
+			{
+				{Content: "Done", IsChunk: true},
+				{Done: true},
+			},
+		},
+	}
+	exec := &recordingExecutor{}
+	agent := New(llm, exec)
+	agent.SetHooks(hookSys)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range agent.Events() {
+		}
+	}()
+
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Run dangerous command"}})
+	<-done
+
+	if len(exec.calls) != 0 {
+		t.Fatalf("expected 0 tool executions (blocked by dangerous hook), got %d", len(exec.calls))
+	}
+
+	// The blocked tool does not emit lifecycle events, but the model should
+	// receive the blocked result as the last tool message.
+	if len(llm.messages) < 2 {
+		t.Fatalf("expected at least 2 LLM calls, got %d", len(llm.messages))
+	}
+	lastCallMessages := llm.messages[len(llm.messages)-1]
+	lastMsg := lastCallMessages[len(lastCallMessages)-1]
+	lastContent := lastMsg.ToolResult
+	if lastContent == nil {
+		t.Fatal("expected last message to have a ToolResult")
+	}
+	if !lastContent.IsError {
+		t.Fatal("expected ToolResult.IsError to be true for a blocked command")
+	}
+	if lastContent.Content == "" || lastContent.Content == "blocked by hook" {
+		t.Fatalf("expected a descriptive block reason, got %q", lastContent.Content)
+	}
+}
+
+func TestAgentDangerousCommandHookAllowsSafeBashCommand(t *testing.T) {
+	hookSys := hooks.New(nil)
+	dangerous := hooks.NewDangerousCommandHook(nil)
+	hookSys.Register(hooks.BeforeToolCall, dangerous.Handler)
+
+	llm := &scriptedLLM{
+		results: [][]core.Result{
+			{
+				{ToolCalls: []core.ToolCall{{ID: "call1", Name: "bash", Arguments: `{"command":"ls -la"}`}}, Done: true},
+			},
+			{
+				{Content: "Done", IsChunk: true},
+				{Done: true},
+			},
+		},
+	}
+	exec := &recordingExecutor{}
+	agent := New(llm, exec)
+	agent.SetHooks(hookSys)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range agent.Events() {
+		}
+	}()
+
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Run safe command"}})
+	<-done
+
+	if len(exec.calls) != 1 {
+		t.Fatalf("expected 1 tool execution (safe command not blocked), got %d", len(exec.calls))
+	}
+	if exec.calls[0].Name != "bash" {
+		t.Fatalf("expected bash tool call, got %q", exec.calls[0].Name)
+	}
+}
