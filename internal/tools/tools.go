@@ -61,6 +61,16 @@ func (r *Registry) Register(t Tool) {
 	r.tools[t.Name] = t
 }
 
+func (r *Registry) Restrict(allowed []string) {
+	filtered := make(map[string]Tool, len(allowed))
+	for _, name := range allowed {
+		if t, ok := r.tools[name]; ok {
+			filtered[name] = t
+		}
+	}
+	r.tools = filtered
+}
+
 func (r *Registry) IsReadOnly(name string) bool {
 	tool, ok := r.tools[name]
 	return ok && tool.IsReadOnly
