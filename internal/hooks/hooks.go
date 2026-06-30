@@ -52,7 +52,8 @@ type HookEvent struct {
 // HookResult indicates whether a before-hook wants to block execution.
 // Only BeforeToolCall hooks may return Block=true.
 type HookResult struct {
-	Block bool
+	Block  bool
+	Reason string
 }
 
 // HookFunc processes a hook event.
@@ -96,27 +97,27 @@ func (s *System) Register(t HookType, fn HookFunc) {
 }
 
 // Notify synchronously invokes all hooks registered for the event type.
-// Hooks fire in registration order. For BeforeToolCall, returns true if
-// any hook blocked execution. For all other types, Block is ignored.
-func (s *System) Notify(ctx context.Context, event HookEvent) bool {
+// Hooks fire in registration order. For BeforeToolCall, returns the first
+// blocking hook's result (non-nil with Block=true). For all other types,
+// Block is ignored and nil is always returned.
+func (s *System) Notify(ctx context.Context, event HookEvent) *HookResult {
 	s.mu.Lock()
 	fns := make([]HookFunc, len(s.hooks[event.Type]))
 	copy(fns, s.hooks[event.Type])
 	s.mu.Unlock()
 
-	blocked := false
 	for _, fn := range fns {
 		select {
 		case <-ctx.Done():
-			return false
+			return nil
 		default:
 		}
 		r := fn(event)
 		if r != nil && r.Block && event.Type == BeforeToolCall {
-			blocked = true
+			return r
 		}
 	}
-	return blocked
+	return nil
 }
 
 // consumeEvents reads from the agent event channel and dispatches

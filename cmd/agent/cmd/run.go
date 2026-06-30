@@ -8,6 +8,7 @@ import (
 
 	"github.com/DietKyle956/last-known-good/internal/agent"
 	"github.com/DietKyle956/last-known-good/internal/core"
+	"github.com/DietKyle956/last-known-good/internal/hooks"
 	"github.com/DietKyle956/last-known-good/internal/llm"
 	"github.com/DietKyle956/last-known-good/internal/sandbox"
 	"github.com/DietKyle956/last-known-good/internal/singleshot"
@@ -58,8 +59,13 @@ var runCmd = &cobra.Command{
 		reg := tools.New(shell)
 		tools.RegisterAll(reg)
 
+		hookSys := hooks.New(nil)
+		dangerous := hooks.NewDangerousCommandHook(nil)
+		hookSys.Register(hooks.BeforeToolCall, dangerous.Handler)
+
 		events := make(chan agent.AgentEvent, 128)
 		a := agent.New(client, reg)
+		a.SetHooks(hookSys)
 		go func() {
 			for ev := range a.Events() {
 				events <- ev
