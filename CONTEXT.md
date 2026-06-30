@@ -9,6 +9,7 @@
 # LKG-010: Sandbox Network Policy & Resource Limits — Complete
 # LKG-013: Hooks Framework — Complete
 # LKG-014: Blocking Hook for Dangerous Commands — Complete
+# LKG-017: Structured JSONL Logging — Complete
 
 ## Summary
 
@@ -360,3 +361,32 @@ internal/
 - **Frontmatter format**: standard YAML-style `---` delimited block with `name:` and `description:` keys; quoted and unquoted values supported; unclosed quotes treated as malformed
 - **No external dependencies**: pure Go standard library — no YAML parser, no additional modules
 - **Test coverage**: 10 tests — valid frontmatter with body, valid frontmatter without body, missing frontmatter, malformed frontmatter, missing required fields, multi-skill directory discovery, empty directory, lazy body loading, unknown skill returns error, skill without body returns empty
+
+## What was built (LKG-017)
+
+- **`internal/logger`** — per-session structured JSONL logging package
+- **`Logger`** struct with `New(sessionID, dir)` constructor and `Close()` — creates `session_<id>.jsonl` in the specified directory
+- **`Hook(ev) *hooks.HookResult`** — implements `hooks.HookFunc`; writes a JSON object per line with `timestamp`, `session_id`, `type`, and optional `model`, `tool_call`, `tool_result`, `error` fields
+- **All 6 hook types** are logged: `SessionStarted`, `SessionEnded`, `BeforeModelCall`, `AfterModelCall`, `BeforeToolCall`, `AfterToolCall`
+- **Tool call details**: `id`, `name`, `arguments` captured from `BeforeToolCall` / `AfterToolCall`
+- **Tool result details**: `tool_call_id`, `content`, `is_error` captured from `AfterToolCall`
+- **Error events**: error message string captured from `AfterModelCall` error events
+- **Model field**: model name logged when present in the hook event
+- **Concurrent-safe**: mutex-protected writes; file is readable by other processes while the session is still running
+- **File persists**: log file remains on disk after `Close()` — not deleted when the session ends
+- **Per-session isolation**: each session ID gets its own `session_<id>.jsonl` file
+- **Wired into `agent run`**: logger created with timestamp-based session ID in `./logs/` directory; registered as a hook for all 6 lifecycle event types
+- **Test coverage**: 9 tests — file creation, JSONL format, concurrent readability, session isolation, all 6 hook types, tool call fields, error field, model field, file persistence after close
+
+### LKG-017 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Logger creates session log file |
+| 2 | Hook events written as JSONL lines with correct fields |
+| 3 | File readable while logger is active (no deferred close) |
+| 4 | Separate log files for different sessions |
+| 5 | All 6 hook types logged with correct type strings |
+| 6 | Tool call fields (id, name, arguments) and tool result fields (content, is_error) |
+| 7 | Error field captured from error events |
+| 8 | File persists on disk after Close() |
