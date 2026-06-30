@@ -10,6 +10,7 @@
 # LKG-013: Hooks Framework — Complete
 # LKG-014: Blocking Hook for Dangerous Commands — Complete
 # LKG-017: Structured JSONL Logging — Complete
+# LKG-018: CLI Session & Log Commands — Complete
 
 ## Summary
 
@@ -297,7 +298,7 @@ Built with vertical tracer-bullet slices — one test → one implementation per
 ## Package structure
 
 ```
-cmd/agent/          main.go + cmd/ (root, chat, run)
+cmd/agent/          main.go + cmd/ (root, chat, run, sessions, logs)
 internal/
   core/             shared domain types + AgentEvent types
   agent/            core agent loop + event types + Session (complete)
@@ -390,3 +391,25 @@ internal/
 | 6 | Tool call fields (id, name, arguments) and tool result fields (content, is_error) |
 | 7 | Error field captured from error events |
 | 8 | File persists on disk after Close() |
+
+## What was built (LKG-018)
+
+- **`sessions list`** — CLI command that queries the store for past sessions and prints ID + created_at to stdout; when no sessions exist, prints "no sessions found" instead of an error
+- **`sessions resume <id>`** — CLI command that loads a session's messages from the store via `Store.Resume(id)`, initializes an LLM client, and enters the agent loop in TUI mode with the loaded messages; invalid IDs produce a clear error; missing `id` arg is rejected by Cobra's `ExactArgs(1)`
+- **`logs <id>`** — CLI command that reads a session's `session_<id>.jsonl` file from the `./logs/` directory and prints it to stdout; missing session IDs produce a clear error
+- **`logs --follow <id>`** / **`logs -f <id>`** — streams new JSONL log lines to stdout as they are written, using a polling `bufio.Reader` loop
+- **`Store.ListSessions()`** — new store method returning `[]SessionRecord` with `ID` and `CreatedAt`, ordered by ID descending; returns an empty slice (not nil) when no sessions exist
+- **`SessionRecord`** type — exported struct with `ID int64` and `CreatedAt string` fields
+- **Shared defaults**: sessions commands default to `./lkg.db` for the store DB path; logs command defaults to `./logs/` for the log directory; both paths can be overridden via `--db` / `--log-dir` flags
+- **No duplicate persistence**: sessions commands read from the same store that `Store.CreateSession()` writes to; logs command reads from the same log files the `logger` package creates
+- **Test coverage**: 9 CLI unit tests (registration, arg validation, flag presence, error handling) + 2 store unit tests for `ListSessions` (returns sessions, empty when none)
+
+### LKG-018 slices
+
+| Slice | What |
+|-------|------|
+| 1 | `Store.ListSessions` — query sessions table, return records with ID + created_at |
+| 2 | `sessions list` command — reads from store, prints formatted rows, handles empty DB |
+| 3 | `sessions resume` command — validates ID arg, opens store, calls `Resume`, enters TUI agent loop |
+| 4 | `logs` command — reads `session_<id>.jsonl` from logs directory, prints to stdout |
+| 5 | `logs --follow` — polls log file for new lines and streams them in real time |
