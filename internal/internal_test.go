@@ -9,6 +9,7 @@ import (
 func TestAllInternalPackagesCompile(t *testing.T) {
 	pkgs := []string{
 		"agent",
+		"hooks",
 		"llm",
 		"sandbox",
 		"singleshot",
