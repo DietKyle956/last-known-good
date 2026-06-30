@@ -12,6 +12,7 @@
 # LKG-017: Structured JSONL Logging — Complete
 # LKG-018: CLI Session & Log Commands — Complete
 # LKG-019: Prompt-Cache-Friendly Request Shaping — Complete
+# LKG-020: Strict JSON Schema Tool Mode — Complete
 # LKG-023: Last Known Good System Prompt — Complete
 
 ## Summary
@@ -446,6 +447,28 @@ internal/
 - **`cmd/agent/cmd/run.go`**: After registering all tools, calls `client.SetTools(toDeepSeekTools(reg.ToolDefinitions()))` with sorted, deterministically-serialized tool definitions
 - **No timestamp/counter**: The system prompt and tool definitions contain no per-call dynamic values — all fields are session-stable
 - **Test coverage**: 2 tool-level tests (sorted order, byte-identical payload across calls) + 1 LLM client test (full request body byte-identical across consecutive calls) + 5 deterministic JSON unit tests
+
+## What was built (LKG-020)
+
+- **`internal/tools/strict.go`**: `SchemaSupportsStrict(schema map[string]any) bool` — recursive check that determines whether a JSON Schema qualifies for DeepSeek's strict schema mode. Rejects schemas with `enum`, `anyOf`, `oneOf`, `allOf`, `not`, `$ref`, `const`, `nullable`, `additionalProperties: true`, non-object root, or unsupported property types (only `string`, `number`, `boolean`, `array` with valid `items`, and `object` with valid `properties` are allowed).
+- **`Strict` field on `DeepSeekFunction`**: `internal/llm/types.go` — boolean `strict` field added to the function definition struct; serialized as `"strict": true` in the API request when set, omitted via `omitempty` when false.
+- **`toDeepSeekTools` integration**: `cmd/agent/cmd/run.go` — each tool definition is individually checked with `SchemaSupportsStrict`; strict-compatible schemas get `Strict: true`, incompatible schemas get `Strict: false` (safe fallback with no error).
+- **Coexistence**: strict-mode and non-strict-mode tools can be sent in the same API request — each tool is evaluated independently.
+- **No result changes**: strict mode only affects the outgoing tool definition; tool call dispatch and result handling are unchanged.
+- **Test coverage**: 8 `SchemaSupportsStrict` tests (simple object, all supported types, enum rejection, anyOf rejection, nullable rejection, additionalProperties rejection, non-object root rejection, $ref rejection) + 3 `toDeepSeekTools` integration tests (strict enabled, strict omitted, mixed strict/non-strict) + 2 LLM client tests (strict included in request body, strict omitted for unsupported schema).
+
+### LKG-020 slices
+
+| Slice | What |
+|-------|------|
+| 1 | `SchemaSupportsStrict` for simple object with string property |
+| 2 | Reject enum, anyOf, oneOf, allOf, not, $ref, const, nullable, additionalProperties |
+| 3 | Accept all supported property types (string, number, boolean, array, object) |
+| 4 | Reject unsupported types (null, non-object root) |
+| 5 | `Strict` field on `DeepSeekFunction` type |
+| 6 | `toDeepSeekTools` sets strict mode per tool definition |
+| 7 | Mixed strict/non-strict tools in same request |
+| 8 | Request body tests — strict included/omitted in JSON |
 
 ### LKG-019 slices
 
