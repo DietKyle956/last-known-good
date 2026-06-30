@@ -498,6 +498,24 @@ func (s *spyExecutor) IsReadOnly(name string) bool {
 	return true
 }
 
+// slowExecutor delays execution to trigger timeouts.
+type slowExecutor struct {
+	delay time.Duration
+}
+
+func (s *slowExecutor) Execute(ctx context.Context, call core.ToolCall) core.ToolResult {
+	select {
+	case <-time.After(s.delay):
+		return core.ToolResult{ToolCallID: call.ID, Content: "ok"}
+	case <-ctx.Done():
+		return core.ToolResult{ToolCallID: call.ID, Content: ctx.Err().Error(), IsError: true}
+	}
+}
+
+func (s *slowExecutor) IsReadOnly(name string) bool {
+	return true
+}
+
 func TestAgentContextCancellation(t *testing.T) {
 	blockingLLM := &blockingLLM{block: make(chan struct{})}
 	exec := &spyExecutor{}
@@ -695,6 +713,195 @@ func TestAgentDangerousCommandHookBlocksBashCommand(t *testing.T) {
 	}
 	if lastContent.Content == "" || lastContent.Content == "blocked by hook" {
 		t.Fatalf("expected a descriptive block reason, got %q", lastContent.Content)
+	}
+}
+
+func TestAgentMaxToolCallsStopsAtLimit(t *testing.T) {
+	llm := &scriptedLLM{
+		results: [][]core.Result{
+			{
+				{ToolCalls: []core.ToolCall{{ID: "call1", Name: "read_file", Arguments: `{"path":"x.txt"}`}}, Done: true},
+			},
+			{
+				{ToolCalls: []core.ToolCall{{ID: "call2", Name: "read_file", Arguments: `{"path":"y.txt"}`}}, Done: true},
+			},
+			{
+				{ToolCalls: []core.ToolCall{{ID: "call3", Name: "read_file", Arguments: `{"path":"z.txt"}`}}, Done: true},
+			},
+		},
+	}
+	exec := &spyExecutor{}
+	agent := New(llm, exec)
+	agent.SetMaxToolCalls(2)
+
+	done := make(chan struct{})
+	var events []AgentEvent
+	go func() {
+		defer close(done)
+		for ev := range agent.Events() {
+			events = append(events, ev)
+		}
+	}()
+
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Loop"}})
+	<-done
+
+	// Should have emitted an error due to iteration limit.
+	var errEvent *AgentEvent
+	for _, ev := range events {
+		if ev.Type == EventError {
+			errEvent = &ev
+			break
+		}
+	}
+	if errEvent == nil {
+		t.Fatal("expected EventError for hitting iteration limit, got none")
+	}
+	if errEvent.Error == nil || errEvent.Error.Error() != "tool call iteration limit reached (2)" {
+		t.Fatalf("unexpected error: %v", errEvent.Error)
+	}
+
+	// Should NOT have a TurnComplete event.
+	for _, ev := range events {
+		if ev.Type == EventTurnComplete {
+			t.Fatal("expected no TurnComplete after iteration limit hit")
+		}
+	}
+
+	// Agent should have called LLM 2 times (1st invocation returned tool calls,
+	// 2nd invocation also returns tool calls, then limit hit before appending results).
+	if len(llm.messages) != 2 {
+		t.Fatalf("expected 2 LLM calls, got %d", len(llm.messages))
+	}
+}
+
+func TestAgentMaxToolCallsZeroIsUnlimited(t *testing.T) {
+	llm := &scriptedLLM{
+		results: [][]core.Result{
+			{
+				{ToolCalls: []core.ToolCall{{ID: "call1", Name: "read_file", Arguments: `{"path":"a.txt"}`}}, Done: true},
+			},
+			{
+				{Content: "Done", IsChunk: true},
+				{Done: true},
+			},
+		},
+	}
+	exec := &spyExecutor{}
+	agent := New(llm, exec)
+	agent.SetMaxToolCalls(0) // explicitly zero = unlimited
+
+	done := make(chan struct{})
+	var events []AgentEvent
+	go func() {
+		defer close(done)
+		for ev := range agent.Events() {
+			events = append(events, ev)
+			if ev.Type == EventTurnComplete {
+				return
+			}
+		}
+	}()
+
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Loop"}})
+	<-done
+
+	var errEvent bool
+	for _, ev := range events {
+		if ev.Type == EventError {
+			errEvent = true
+			break
+		}
+	}
+	if errEvent {
+		t.Fatal("expected no EventError when MaxToolCalls=0")
+	}
+}
+
+func TestAgentToolTimeoutReturnsErrorResult(t *testing.T) {
+	llm := &scriptedLLM{
+		results: [][]core.Result{
+			{
+				{ToolCalls: []core.ToolCall{{ID: "call1", Name: "read_file", Arguments: `{"path":"x.txt"}`}}, Done: true},
+			},
+			{
+				{Content: "done", IsChunk: true},
+				{Done: true},
+			},
+		},
+	}
+	exec := &slowExecutor{delay: 5 * time.Second}
+	agent := New(llm, exec)
+	agent.SetToolTimeout(10 * time.Millisecond)
+
+	done := make(chan struct{})
+	var events []AgentEvent
+	go func() {
+		defer close(done)
+		for ev := range agent.Events() {
+			events = append(events, ev)
+		}
+	}()
+
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "Timeout test"}})
+	<-done
+
+	// Verify the tool call finished event has an error result (from context deadline).
+	var toolFinished *AgentEvent
+	for _, ev := range events {
+		if ev.Type == EventToolCallFinished && ev.ToolCall != nil && ev.ToolCall.ID == "call1" {
+			toolFinished = &ev
+			break
+		}
+	}
+	if toolFinished == nil {
+		t.Fatal("expected EventToolCallFinished for the timed-out tool")
+	}
+	if toolFinished.ToolResult == nil {
+		t.Fatal("expected ToolResult on finished event")
+	}
+	if !toolFinished.ToolResult.IsError {
+		t.Fatal("expected IsError=true for timed-out tool")
+	}
+}
+
+func TestAgentToolTimeoutZeroIsNoTimeout(t *testing.T) {
+	llm := &scriptedLLM{
+		results: [][]core.Result{
+			{
+				{ToolCalls: []core.ToolCall{{ID: "call1", Name: "read_file", Arguments: `{"path":"x.txt"}`}}, Done: true},
+			},
+			{
+				{Content: "done", IsChunk: true},
+				{Done: true},
+			},
+		},
+	}
+	exec := &spyExecutor{}
+	agent := New(llm, exec)
+	agent.SetToolTimeout(0) // zero = no timeout
+
+	done := make(chan struct{})
+	var events []AgentEvent
+	go func() {
+		defer close(done)
+		for ev := range agent.Events() {
+			events = append(events, ev)
+			if ev.Type == EventTurnComplete {
+				return
+			}
+		}
+	}()
+
+	agent.Run(context.Background(), []core.Message{{Role: "user", Content: "No timeout"}})
+	<-done
+
+	for _, ev := range events {
+		if ev.Type == EventToolCallFinished && ev.ToolCall != nil {
+			if ev.ToolResult != nil && ev.ToolResult.IsError {
+				t.Fatal("expected no error on tool result when timeout is 0")
+			}
+		}
 	}
 }
 

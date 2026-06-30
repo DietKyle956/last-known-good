@@ -14,6 +14,7 @@
 # LKG-019: Prompt-Cache-Friendly Request Shaping — Complete
 # LKG-020: Strict JSON Schema Tool Mode — Complete
 # LKG-023: Last Known Good System Prompt — Complete
+# LKG-021: Per-Tool Timeout & Max-Iteration Guard — Complete
 
 ## Summary
 
@@ -479,3 +480,24 @@ internal/
 | 3 | `Tools` field on `DeepSeekRequest` + wired into `buildRequest` |
 | 4 | `SetTools` on `DeepSeekClient` + wired into `run.go` |
 | 5 | Byte-level identity acceptance test across consecutive calls |
+
+## What was built (LKG-021)
+
+- **`Agent.SetToolTimeout(duration)`** — configurable per-tool wall-clock timeout; zero means no timeout
+- **`Agent.SetMaxToolCalls(n)`** — configurable max tool-call iterations per `Run` call; zero means unlimited
+- **`timeoutContext`** — helper returns a derived context with `context.WithTimeout` and its cancel function; callers properly `defer cancel()` to avoid context leaks
+- **Max iteration guard**: the agent loop counts tool-call iterations; when `MaxToolCalls > 0` and the counter reaches the limit, the loop emits `EventError` and returns instead of looping further
+- **Per-tool timeout**: each tool execution in `executeToolCalls` (both parallel read-only and sequential write tools) gets a timeout-scoped context; when the deadline fires, `exec.CommandContext` kills the sandbox process and the tool returns a structured `ToolResult{IsError: true}`
+- **No new event types**: timeouts flow through existing `EventToolCallFinished` with an error `ToolResult`; iteration limit uses `EventError`
+- **No panics**: both guards return cleanly via the event channel
+- **4 new tests**: timeout produces error result, timeout=0 is unlimited, max iteration stops with error, max=0 is unlimited
+
+### LKG-021 slices
+
+| Slice | What |
+|-------|------|
+| 1 | Config fields (`toolTimeout`, `maxToolCalls`) + setter methods |
+| 2 | Max iteration guard: counter in `Run` loop, `EventError` on limit |
+| 3 | Per-tool timeout: `timeoutContext` helper wrapping `context.WithTimeout` |
+| 4 | Tests: max iteration stops with error, unlimited at zero |
+| 5 | Tests: timeout returns error result, no-op at zero |
