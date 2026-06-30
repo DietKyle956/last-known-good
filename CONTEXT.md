@@ -11,6 +11,7 @@
 # LKG-014: Blocking Hook for Dangerous Commands — Complete
 # LKG-017: Structured JSONL Logging — Complete
 # LKG-018: CLI Session & Log Commands — Complete
+# LKG-023: Last Known Good System Prompt — Complete
 
 ## Summary
 
@@ -413,3 +414,24 @@ internal/
 | 3 | `sessions resume` command — validates ID arg, opens store, calls `Resume`, enters TUI agent loop |
 | 4 | `logs` command — reads `session_<id>.jsonl` from logs directory, prints to stdout |
 | 5 | `logs --follow` — polls log file for new lines and streams them in real time |
+
+## What was built (LKG-023)
+
+- **`internal/core/prompt.go`** — new file containing the Last Known Good persona as a `const Persona` and a `BuildSystemPrompt(skillSummaries, toolDescriptions string) string` function
+- **Persona**: `"You are Last Known Good, a software development assistant."` — direct, deadpan, sarcastic, and witty; replaces the generic `"You are a helpful assistant."`
+- **`BuildSystemPrompt`** composes the persona, an optional `## Available Skills` section from skill summaries, and an optional `## Available Tools` section from tool definitions
+- **No import coupling**: `BuildSystemPrompt` takes pre-formatted strings so `core` does not import `skills` or `tools`
+- **`cmd/agent/cmd/chat.go`** — instantiates `skills.NewLoader("skills")`, calls `BuildSystemPrompt` with skill summaries and empty tools
+- **`cmd/agent/cmd/run.go`** — instantiates `skills.NewLoader("skills")`, formats tool definitions from `reg.ToolDefinitions()`, calls `BuildSystemPrompt` with both
+- **Skills directory**: if `skills/` does not exist, the loader is a no-op; if it exists, skill names and descriptions are injected into the system prompt
+- **Test coverage**: 3 unit tests for `BuildSystemPrompt` — returns persona without sections, includes skills section when provided, includes tools section when provided
+
+### LKG-023 slices
+
+| Slice | What |
+|-------|------|
+| 1 | `BuildSystemPrompt` returns persona text without sections |
+| 2 | Skills summaries section included when provided |
+| 3 | Tool definitions section included when provided |
+| 4 | Wired into `chat.go` |
+| 5 | Wired into `run.go` |
