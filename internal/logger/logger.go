@@ -85,7 +85,10 @@ func (l *Logger) Hook(ev hooks.HookEvent) *hooks.HookResult {
 	}
 
 	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.encoder.Encode(entry)
+	err := l.encoder.Encode(entry)
+	l.mu.Unlock()
+	if err != nil {
+		return nil
+	}
 	return nil
 }

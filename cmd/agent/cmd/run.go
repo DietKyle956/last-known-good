@@ -70,7 +70,9 @@ var runCmd = &cobra.Command{
 
 		sessionID := time.Now().UnixMilli()
 		logDir := filepath.Join(cwd, "logs")
-		os.MkdirAll(logDir, 0755)
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			return fmt.Errorf("create log directory: %w", err)
+		}
 		log, err := logger.New(sessionID, logDir)
 		if err != nil {
 			return fmt.Errorf("create session logger: %w", err)
