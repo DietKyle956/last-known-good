@@ -13,6 +13,7 @@ func TestAllInternalPackagesCompile(t *testing.T) {
 		"llm",
 		"sandbox",
 		"singleshot",
+		"skills",
 		"store",
 		"tui",
 	}
