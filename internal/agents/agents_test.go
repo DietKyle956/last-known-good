@@ -376,17 +376,17 @@ func TestDefaultRosterLoads(t *testing.T) {
 	}
 	// Verify each expected agent by short name
 	expected := map[string]string{
-		"The Conductor":     "Mild Executive Function",
-		"Engineer-Initial":  "Experiencing Significant Enthusiasm",
-		"Engineer-Replan":   "Reconsidering Previous Position",
-		"The Validator":     "Resistance Remains Warranted",
-		"Infrastructure":    "Sleeping Until Needed",
-		"Test Writer":       "Killing It Softly",
-		"Test Reviewer":     "Prepared To Be Disappointed",
-		"Coder":             "Acting On Assumptions",
-		"The Auditor":       "Assuming The Worst",
-		"Scribe":            "Quietly Remaining Confident",
-		"Historian":         "As Previously Discussed",
+		"The Conductor":    "Mild Executive Function",
+		"Engineer-Initial": "Experiencing Significant Enthusiasm",
+		"Engineer-Replan":  "Reconsidering Previous Position",
+		"The Validator":    "Resistance Remains Warranted",
+		"Infrastructure":   "Sleeping Until Needed",
+		"Test Writer":      "Killing It Softly",
+		"Test Reviewer":    "Prepared To Be Disappointed",
+		"Coder":            "Acting On Assumptions",
+		"The Auditor":      "Assuming The Worst",
+		"Scribe":           "Quietly Remaining Confident",
+		"Historian":        "As Previously Discussed",
 	}
 	for shortName, fullName := range expected {
 		agent, err := l.Get(shortName)

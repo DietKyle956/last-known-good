@@ -24,8 +24,8 @@ import (
 )
 
 var (
-	jsonFlag   bool
-	agentFlag  string
+	jsonFlag    bool
+	agentFlag   string
 	errNoPrompt = errors.New("prompt is required")
 )
 
