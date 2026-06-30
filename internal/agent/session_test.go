@@ -94,13 +94,6 @@ func TestSessionContextCancellation(t *testing.T) {
 	}
 }
 
-// recordingLLM wraps an LLM and records which model it was configured with.
-type recordingLLM struct {
-	LLM
-	model    string
-	thinking bool
-}
-
 func TestSessionWithRouterSelectsLLMPerTurn(t *testing.T) {
 	exec := &spyExecutor{}
 
