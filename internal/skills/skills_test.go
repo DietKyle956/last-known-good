@@ -103,22 +103,30 @@ func TestLoaderDiscoversSkillsFromDirectory(t *testing.T) {
 
 	// Create skill directories with markdown files
 	skill1Dir := filepath.Join(dir, "skill-one")
-	os.MkdirAll(skill1Dir, 0755)
-	os.WriteFile(filepath.Join(skill1Dir, "SKILL.md"), []byte(`---
+	if err := os.MkdirAll(skill1Dir, 0755); err != nil {
+		t.Fatalf("failed to create skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skill1Dir, "SKILL.md"), []byte(`---
 name: skill-one
 description: The first skill
 ---
 Body of skill one
-`), 0644)
+`), 0644); err != nil {
+		t.Fatalf("failed to write skill file: %v", err)
+	}
 
 	skill2Dir := filepath.Join(dir, "skill-two")
-	os.MkdirAll(skill2Dir, 0755)
-	os.WriteFile(filepath.Join(skill2Dir, "SKILL.md"), []byte(`---
+	if err := os.MkdirAll(skill2Dir, 0755); err != nil {
+		t.Fatalf("failed to create skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skill2Dir, "SKILL.md"), []byte(`---
 name: skill-two
 description: The second skill
 ---
 Body of skill two
-`), 0644)
+`), 0644); err != nil {
+		t.Fatalf("failed to write skill file: %v", err)
+	}
 
 	l := NewLoader(dir)
 	if err := l.Load(); err != nil {
@@ -164,8 +172,10 @@ func TestLoaderEmptyDirectory(t *testing.T) {
 func TestLoaderReadSkillReturnsFullBody(t *testing.T) {
 	dir := t.TempDir()
 	skillDir := filepath.Join(dir, "my-skill")
-	os.MkdirAll(skillDir, 0755)
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("failed to create skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
 name: my-skill
 description: A lazy-loaded skill
 ---
@@ -173,7 +183,9 @@ description: A lazy-loaded skill
 
 This is the full body of my skill.
 It spans multiple lines.
-`), 0644)
+`), 0644); err != nil {
+		t.Fatalf("failed to write skill file: %v", err)
+	}
 
 	l := NewLoader(dir)
 	if err := l.Load(); err != nil {
@@ -218,12 +230,16 @@ func TestLoaderReadSkillUnknownName(t *testing.T) {
 func TestLoaderReadSkillNoBody(t *testing.T) {
 	dir := t.TempDir()
 	skillDir := filepath.Join(dir, "empty-skill")
-	os.MkdirAll(skillDir, 0755)
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("failed to create skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
 name: empty-skill
 description: A skill with no body
 ---
-`), 0644)
+`), 0644); err != nil {
+		t.Fatalf("failed to write skill file: %v", err)
+	}
 
 	l := NewLoader(dir)
 	if err := l.Load(); err != nil {
