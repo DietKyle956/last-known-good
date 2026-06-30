@@ -337,6 +337,112 @@ func TestChatContextCancellation(t *testing.T) {
 	}
 }
 
+func TestDeepSeekClientIncludesStrictModeForSupportedSchemas(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewDeepSeekClient(DeepSeekConfig{
+		APIKey:  "test-key",
+		Model:   "deepseek-v4-flash",
+		BaseURL: srv.URL,
+	})
+
+	client.SetTools([]DeepSeekToolDef{
+		{
+			Type: "function",
+			Function: DeepSeekFunction{
+				Name:        "read_file",
+				Description: "Read a file",
+				Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`),
+				Strict:      true,
+			},
+		},
+	})
+
+	results, _ := client.Chat(context.Background(), []core.Message{{Role: "user", Content: "Hi"}})
+	for range results {
+	}
+
+	var req map[string]any
+	if err := json.Unmarshal(capturedBody, &req); err != nil {
+		t.Fatalf("unmarshal captured body: %v", err)
+	}
+
+	tools, ok := req["tools"].([]any)
+	if !ok || len(tools) == 0 {
+		t.Fatal("expected tools in request")
+	}
+
+	tool0 := tools[0].(map[string]any)
+	fn, ok := tool0["function"].(map[string]any)
+	if !ok {
+		t.Fatal("expected function in tool")
+	}
+
+	strict, ok := fn["strict"].(bool)
+	if !ok || !strict {
+		t.Fatal("expected strict: true in function definition")
+	}
+}
+
+func TestDeepSeekClientOmitsStrictModeForUnsupportedSchemas(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chat-1","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewDeepSeekClient(DeepSeekConfig{
+		APIKey:  "test-key",
+		Model:   "deepseek-v4-flash",
+		BaseURL: srv.URL,
+	})
+
+	// Schema with enum - should NOT have strict mode
+	client.SetTools([]DeepSeekToolDef{
+		{
+			Type: "function",
+			Function: DeepSeekFunction{
+				Name:        "pick_color",
+				Description: "Pick a color",
+				Parameters:  json.RawMessage(`{"type":"object","properties":{"color":{"type":"string","enum":["red","blue"]}},"required":["color"]}`),
+				Strict:      false,
+			},
+		},
+	})
+
+	results, _ := client.Chat(context.Background(), []core.Message{{Role: "user", Content: "Hi"}})
+	for range results {
+	}
+
+	var req map[string]any
+	if err := json.Unmarshal(capturedBody, &req); err != nil {
+		t.Fatalf("unmarshal captured body: %v", err)
+	}
+
+	tools, ok := req["tools"].([]any)
+	if !ok || len(tools) == 0 {
+		t.Fatal("expected tools in request")
+	}
+
+	tool0 := tools[0].(map[string]any)
+	fn, ok := tool0["function"].(map[string]any)
+	if !ok {
+		t.Fatal("expected function in tool")
+	}
+
+	if _, exists := fn["strict"]; exists {
+		t.Fatal("expected strict to be omitted for unsupported schema")
+	}
+}
+
 func TestRequestPayloadIsByteIdenticalAcrossCalls(t *testing.T) {
 	var bodies [][]byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

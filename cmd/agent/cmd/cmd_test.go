@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/DietKyle956/last-known-good/internal/tools"
 	"github.com/spf13/cobra"
 )
 
@@ -190,6 +191,98 @@ func TestLogsInvalidIDShowsError(t *testing.T) {
 	err = cmd.RunE(cmd, []string{"99999"})
 	if err == nil {
 		t.Fatal("expected error for invalid session ID")
+	}
+}
+
+func TestToDeepSeekToolsSetsStrictForSupportedSchemas(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{
+			Name:        "read_file",
+			Description: "Read a file",
+			Parameters: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"path": map[string]any{"type": "string"}},
+				"required":   []any{"path"},
+			},
+		},
+	}
+	result := toDeepSeekTools(defs)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 tool def, got %d", len(result))
+	}
+	if !result[0].Function.Strict {
+		t.Fatal("expected Strict=true for supported schema")
+	}
+}
+
+func TestToDeepSeekToolsOmitsStrictForUnsupportedSchemas(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{
+			Name:        "pick_color",
+			Description: "Pick a color",
+			Parameters: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"color": map[string]any{"type": "string", "enum": []any{"red", "blue"}}},
+				"required":   []any{"color"},
+			},
+		},
+	}
+	result := toDeepSeekTools(defs)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 tool def, got %d", len(result))
+	}
+	if result[0].Function.Strict {
+		t.Fatal("expected Strict=false for schema with enum")
+	}
+}
+
+func TestToDeepSeekToolsMixedStrictAndNonStrict(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{
+			Name:        "a_tool",
+			Description: "A strict-compatible tool",
+			Parameters: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"name": map[string]any{"type": "string"}},
+				"required":   []any{"name"},
+			},
+		},
+		{
+			Name:        "b_tool",
+			Description: "A tool with unsupported features",
+			Parameters: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"color": map[string]any{"type": "string", "enum": []any{"red"}}},
+				"required":   []any{"color"},
+			},
+		},
+	}
+	result := toDeepSeekTools(defs)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 tool defs, got %d", len(result))
+	}
+
+	strictCount := 0
+	nonStrictCount := 0
+	for _, d := range result {
+		if d.Function.Name == "a_tool" {
+			if !d.Function.Strict {
+				t.Error("expected a_tool to have Strict=true")
+			}
+			strictCount++
+		}
+		if d.Function.Name == "b_tool" {
+			if d.Function.Strict {
+				t.Error("expected b_tool to have Strict=false")
+			}
+			nonStrictCount++
+		}
+	}
+	if strictCount != 1 {
+		t.Errorf("expected 1 strict tool, got %d", strictCount)
+	}
+	if nonStrictCount != 1 {
+		t.Errorf("expected 1 non-strict tool, got %d", nonStrictCount)
 	}
 }
 
